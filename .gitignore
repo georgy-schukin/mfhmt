@@ -42,3 +42,4 @@ build/*
 # Program output
 *.txt
 *.lst
+*.dat
