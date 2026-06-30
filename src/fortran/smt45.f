@@ -423,7 +423,7 @@ c===================================== write
          do l=1,lm+2
             do i=1,im+1
                write(17,101) i,l,k,jx(i,l,k)
-  101          format(3i5,e12.4)
+  101          format(3i5,es12.4)
             enddo
          enddo
       enddo
@@ -443,7 +443,7 @@ c===================================== write
       do k=1,km+1
          do l=1,lm+2
             do i=1,im+2
-               write(17,101) i,l,k,jx(i,l,k)
+               write(17,101) i,l,k,jz(i,l,k)
             enddo
          enddo
       enddo

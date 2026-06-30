@@ -21,19 +21,19 @@ int main(int argc, char **argv) {
     const int IM_DEF = 40;
     const int LM_DEF = 40;
     const int KM_DEF = 20;
-    const int FOUT_DEF = 1;
-    const int FULL_OUTPUT_DEF = 0;
+    const int NM_DEF = 1000;
+    const int FOUT_DEF = 1;    
 
     if (argc > 1) {
         const auto s = string(argv[1]);
         if (s == "-h" || s == "--help") {
-            cout << argv[0] <<
+            std::cout << argv[0] <<
                 " [im=" << IM_DEF << "]" <<
                 " [lm=" << LM_DEF << "]" <<
                 " [km=" << KM_DEF << "]" <<
+                " [nm=" << NM_DEF << "]" <<
                 " [file_output=" << FOUT_DEF << "]" <<
-                " [full_output=" << FULL_OUTPUT_DEF << "]" <<
-                endl;
+                std::endl;
             return 0;
         }
     }
@@ -41,8 +41,8 @@ int main(int argc, char **argv) {
     const int im = (argc > 1) ? stoi(argv[1]) : IM_DEF;
     const int lm = (argc > 2) ? stoi(argv[2]) : LM_DEF;
     const int km = (argc > 3) ? stoi(argv[3]) : KM_DEF;
-    const bool file_output = (argc > 4) ? stoi(argv[4]) : FOUT_DEF;
-    const bool full_output = (argc > 5) ? stoi(argv[5]) : FULL_OUTPUT_DEF;
+    const int nm = (argc > 4) ? stoi(argv[4]) : NM_DEF;
+    const bool file_output = (argc > 5) ? stoi(argv[5]) : FOUT_DEF;
 
     const size_t ims = im + 2;
     const size_t lms = lm + 2;
@@ -56,11 +56,10 @@ int main(int argc, char **argv) {
 
     DArray3 jx(ims, lms, kms), jy(ims, lms, kms), jz(ims, lms, kms);
     DArray3 ax(ims, lms, kms), ay(ims, lms, kms), az(ims, lms, kms);
-    DArray3 bx(ims, lms, kms), by(ims, lms, kms), bz(ims, lms, kms);
+    DArray3 bx(ims, lms, kms), by(ims, lms, kms), bz(ims, lms, kms);    
 
     const double qj = 10.0;
     const double pi = 3.14159265358979;
-    const int nm = 1000;
     const double c1 = 2.0 * pi / nm;
     const double xm = 4.0;
     const double ym = 4.0;
@@ -313,7 +312,6 @@ c zadanie vintovogo toka
             pqr(jx, jy, jz, i1, l1, k1, x, y, z, x2, y2, z2);
             pqr(jx, jy, jz, i2, l2, k2, x2, y2, z2, x1, y1, z1);
         }
-
         x = x1;
         y = y1;
         z = z1;
@@ -394,6 +392,12 @@ c   vychislenie vektornogo potentsiala
     const double c21 = hy / hx;
     const double c23 = hy / hz;
 
+    int n = 0;
+    double sx = 0.0, sy = 0.0, sz = 0.0;
+
+    do {
+        n++;
+
 /*
 c  ax
       sx=0.d0
@@ -410,18 +414,18 @@ c  ax
          enddo
       enddo
 */
-    double sx = 0.0;
-    for (int k = 1; k < km + 1; k++) {
-        for (int l = 1; l < lm + 1; l++) {
-            for (int i = 1; i < im; i++) {
-                const double s = ((ax(i+1,l,k) + ax(i-1,l,k)) * rhx2 +
-                            (ax(i,l+1,k) + ax(i,l-1,k)) * rhy2 +
-                            (ax(i,l,k+1) + ax(i,l,k-1)) * rhz2 + jx(i,l,k)) * rc2;
-                sx = std::max(std::abs(ax(i,l,k) - s), sx);
-                ax(i,l,k) = s;
+        sx = 0.0;
+        for (int k = 1; k < km + 1; k++) {
+            for (int l = 1; l < lm + 1; l++) {
+                for (int i = 1; i < im; i++) {
+                    const double s = ((ax(i+1,l,k) + ax(i-1,l,k)) * rhx2 +
+                                (ax(i,l+1,k) + ax(i,l-1,k)) * rhy2 +
+                                (ax(i,l,k+1) + ax(i,l,k-1)) * rhz2 + jx(i,l,k)) * rc2;
+                    sx = std::max(std::abs(ax(i,l,k) - s), sx);
+                    ax(i,l,k) = s;
+                }
             }
         }
-    }
 
 
 /*
@@ -434,16 +438,16 @@ c  ax
          enddo
       enddo
 */
-    for (int k = 1; k < km + 1; k++) {
-        for (int l = 1; l < lm + 1; l++) {
-            ax(0,l,k) = ax(1,l,k) +
-                        c12 * (ay(1,l,k) - ay(1,l-1,k)) +
-                        c13 * (az(1,l,k) - az(1,l,k-1));
-            ax(im,l,k) = ax(im,l,k) -
-                        c12 * (ay(im,l,k) - ay(im,l-1,k)) -
-                        c13 * (az(im,l,k) - az(im,l,k-1));
+        for (int k = 1; k < km + 1; k++) {
+            for (int l = 1; l < lm + 1; l++) {
+                ax(0,l,k) = ax(1,l,k) +
+                            c12 * (ay(1,l,k) - ay(1,l-1,k)) +
+                            c13 * (az(1,l,k) - az(1,l,k-1));
+                ax(im,l,k) = ax(im-1,l,k) -
+                            c12 * (ay(im,l,k) - ay(im,l-1,k)) -
+                            c13 * (az(im,l,k) - az(im,l,k-1));
+            }
         }
-    }
 
 /*
       do l=1,lm+2
@@ -453,12 +457,12 @@ c  ax
          enddo
       enddo
 */
-    for (int l = 0; l < lm + 2; l++) {
-        for (int i = 0; i < im + 1; i++) {
-            ax(i,l,0) = ax(i,l,km);
-            ax(i,l,km+1) = ax(i,l,1);
+        for (int l = 0; l < lm + 2; l++) {
+            for (int i = 0; i < im + 1; i++) {
+                ax(i,l,0) = ax(i,l,km);
+                ax(i,l,km+1) = ax(i,l,1);
+            }
         }
-    }
 
 /*
       do k=1,km+2
@@ -468,12 +472,12 @@ c  ax
          enddo
       enddo
 */
-    for (int k = 0; k < km + 2; k++) {
-        for (int i = 0; i < im + 1; i++) {
-            ax(i,0,k) = ax(i,1,k);
-            ax(i,lm+1,k) = ax(i,lm,k);
+        for (int k = 0; k < km + 2; k++) {
+            for (int i = 0; i < im + 1; i++) {
+                ax(i,0,k) = ax(i,1,k);
+                ax(i,lm+1,k) = ax(i,lm,k);
+            }
         }
-    }
 
 /*
 c  ay
@@ -491,18 +495,18 @@ c  ay
          enddo
       enddo
 */
-    double sy = 0.0;
-    for (int k = 1; k < km + 1; k++) {
-        for (int l = 1; l < lm; l++) {
-            for (int i = 1; i < im + 1; i++) {
-                const double s = ((ay(i+1,l,k) + ay(i-1,l,k)) * rhx2 +
-                                  (ay(i,l+1,k) + ay(i,l-1,k)) * rhy2 +
-                                  (ay(i,l,k+1) + ay(i,l,k-1)) * rhz2 + jy(i,l,k)) * rc2;
-                sy = std::max(std::abs(ay(i,l,k) - s), sy);
-                ay(i,l,k) = s;
+        sy = 0.0;
+        for (int k = 1; k < km + 1; k++) {
+            for (int l = 1; l < lm; l++) {
+                for (int i = 1; i < im + 1; i++) {
+                    const double s = ((ay(i+1,l,k) + ay(i-1,l,k)) * rhx2 +
+                                      (ay(i,l+1,k) + ay(i,l-1,k)) * rhy2 +
+                                      (ay(i,l,k+1) + ay(i,l,k-1)) * rhz2 + jy(i,l,k)) * rc2;
+                    sy = std::max(std::abs(ay(i,l,k) - s), sy);
+                    ay(i,l,k) = s;
+                }
             }
         }
-    }
 
 /*
       do k=2,km+1
@@ -514,16 +518,16 @@ c  ay
          enddo
       enddo
 */
-    for (int k = 1; k < km + 1; k++) {
-        for (int i = 1; i < im + 1; i++) {
-            ay(i,0,k) = ay(i,1,k) +
-                        c21 * (ax(i,1,k) - ax(i-1,1,k)) +
-                        c23 * (az(i,1,k) - az(i,1,k-1));
-            ay(i,lm,k) = ay(i,lm,k) -
-                        c21 * (ax(i,lm,k) - ax(i-1,lm,k)) -
-                        c23 * (az(i,lm,k) - az(i,lm,k-1));
+        for (int k = 1; k < km + 1; k++) {
+            for (int i = 1; i < im + 1; i++) {
+                ay(i,0,k) = ay(i,1,k) +
+                            c21 * (ax(i,1,k) - ax(i-1,1,k)) +
+                            c23 * (az(i,1,k) - az(i,1,k-1));
+                ay(i,lm,k) = ay(i,lm-1,k) -
+                            c21 * (ax(i,lm,k) - ax(i-1,lm,k)) -
+                            c23 * (az(i,lm,k) - az(i,lm,k-1));
+            }
         }
-    }
 
 /*
       do l=1,lm+1
@@ -533,12 +537,12 @@ c  ay
          enddo
       enddo
 */
-    for (int l = 0; l < lm + 1; l++) {
-        for (int i = 0; i < im + 1; i++) {
-            ay(i,l,0) = ay(i,l,km);
-            ay(i,l,km+1) = ay(i,l,1);
+        for (int l = 0; l < lm + 1; l++) {
+            for (int i = 0; i < im + 1; i++) {
+                ay(i,l,0) = ay(i,l,km);
+                ay(i,l,km+1) = ay(i,l,1);
+            }
         }
-    }
 
 /*
       do k=1,km+2
@@ -548,12 +552,12 @@ c  ay
          enddo
       enddo
 */
-    for (int k = 0; k < km + 2; k++) {
-        for (int l = 0; l < lm + 1; l++) {
-            ay(0,l,k) = ay(1,l,k);
-            ay(im+1,l,k) = ay(im,l,k);
+        for (int k = 0; k < km + 2; k++) {
+            for (int l = 0; l < lm + 1; l++) {
+                ay(0,l,k) = ay(1,l,k);
+                ay(im+1,l,k) = ay(im,l,k);
+            }
         }
-    }
 
 /*
 c  az
@@ -578,24 +582,24 @@ c  az
          enddo
       enddo
 */
-    double sz = 0.0;
-    for (int l = 1; l < lm + 1; l++) {
-        for (int i = 1; i < im + 1; i++) {
-            for (int k = 1; k < km; k++) {
-                const double s = ((az(i+1,l,k) + az(i-1,l,k)) * rhx2 +
-                                  (az(i,l+1,k) + az(i,l-1,k)) * rhy2 +
-                                  (az(i,l,k+1) + az(i,l,k-1)) * rhz2 + jz(i,l,k)) * rc2;
-                sz = std::max(std::abs(az(i,l,k) - s), sz);
-                az(i,l,k) = s;
+        sz = 0.0;
+        for (int l = 1; l < lm + 1; l++) {
+            for (int i = 1; i < im + 1; i++) {
+                for (int k = 1; k < km; k++) {
+                    const double s = ((az(i+1,l,k) + az(i-1,l,k)) * rhx2 +
+                                      (az(i,l+1,k) + az(i,l-1,k)) * rhy2 +
+                                      (az(i,l,k+1) + az(i,l,k-1)) * rhz2 + jz(i,l,k)) * rc2;
+                    sz = std::max(std::abs(az(i,l,k) - s), sz);
+                    az(i,l,k) = s;
+                }
+                const double s = ((az(i+1,l,km) + az(i-1,l,km)) * rhx2 +
+                                  (az(i,l+1,km) + az(i,l-1,km)) * rhy2 +
+                                  (az(i,l,1) + az(i,l,km-1)) * rhz2 + jz(i,l,km)) * rc2;
+                sz = std::max(std::abs(az(i,l,km) - s), sz);
+                az(i,l,km) = s;
+                az(i,l,0) = s;
             }
-            const double s = ((az(i+1,l,km) + az(i-1,l,km)) * rhx2 +
-                              (az(i,l+1,km) + az(i,l-1,km)) * rhy2 +
-                              (az(i,l,1) + az(i,l,km)) * rhz2 + jz(i,l,km)) * rc2;
-            sz = std::max(std::abs(az(i,l,km) - s), sz);
-            az(i,l,km) = s;
-            az(i,l,0) = s;
         }
-    }
 
 /*
       do l=1,lm+2
@@ -605,23 +609,22 @@ c  az
          enddo
       enddo
 */
-    for (int l = 0; l < lm + 2; l++) {
-        for (int i = 0; i < im + 2; i++) {
-            az(i,l,0) = az(i,l,km);
-            az(i,l,km+1) = az(i,l,1);
+        for (int l = 0; l < lm + 2; l++) {
+            for (int i = 0; i < im + 2; i++) {
+                az(i,l,0) = az(i,l,km);
+                az(i,l,km+1) = az(i,l,1);
+            }
         }
-    }
 
 /*
-c      write(25,*) 'ax. n,sx=',n,sx
       print 104,n,sx,sy,sz
   104 format('n,sx,sy,sz=',i6,3e12.4)
 
       if((sx.gt.eps).or.(sy.gt.eps).or.(sz.gt.eps)) goto 8
-c      if(n.lt.200) goto 8
 
       write(25,104) n,sx,sy,sz
 */
+    } while (sx > eps || sy > eps || sz > eps);
 
 /*
 c========================= bx, by, bz ============
@@ -880,15 +883,17 @@ c===================================== rotB-j
         }
     }
 
-    outputDat("jx.dat", jx, im + 1, lm + 2, km + 2);
-    outputDat("jy.dat", jy, im + 2, lm + 1, km + 2);
-    outputDat("jz.dat", jz, im + 2, lm + 2, km + 1);
-    outputDat("ax.dat", ax, im + 1, lm + 2, km + 2);
-    outputDat("ay.dat", ay, im + 2, lm + 1, km + 2);
-    outputDat("az.dat", az, im + 2, lm + 2, km + 1);
-    outputDat("bx.dat", bx, im + 2, lm + 1, km + 1);
-    outputDat("by.dat", by, im + 1, lm + 2, km + 1);
-    outputDat("bz.dat", bz, im + 1, lm + 1, km + 2);
+    if (file_output) {
+        outputDat("jx.dat", jx, im + 1, lm + 2, km + 2);
+        outputDat("jy.dat", jy, im + 2, lm + 1, km + 2);
+        outputDat("jz.dat", jz, im + 2, lm + 2, km + 1);
+        outputDat("ax.dat", ax, im + 1, lm + 2, km + 2);
+        outputDat("ay.dat", ay, im + 2, lm + 1, km + 2);
+        outputDat("az.dat", az, im + 2, lm + 2, km + 1);
+        outputDat("bx.dat", bx, im + 2, lm + 1, km + 1);
+        outputDat("by.dat", by, im + 1, lm + 2, km + 1);
+        outputDat("bz.dat", bz, im + 1, lm + 1, km + 2);
+    }
 
     return 0;
 }
