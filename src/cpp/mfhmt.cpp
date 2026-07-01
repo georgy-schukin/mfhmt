@@ -23,7 +23,8 @@ int main(int argc, char **argv) {
     const int LM_DEF = 40;
     const int KM_DEF = 20;
     const int NM_DEF = 1000;
-    const int FOUT_DEF = 1;    
+    const int FOUT_DEF = 1;
+    const int SOUT_DEF = 0;
 
     if (argc > 1) {
         const auto s = string(argv[1]);
@@ -34,6 +35,7 @@ int main(int argc, char **argv) {
                 " [km=" << KM_DEF << "]" <<
                 " [nm=" << NM_DEF << "]" <<
                 " [file_output=" << FOUT_DEF << "]" <<
+                " [screen_output=" << SOUT_DEF << "]" <<
                 std::endl;
             return 0;
         }
@@ -44,6 +46,7 @@ int main(int argc, char **argv) {
     const int km = (argc > 3) ? stoi(argv[3]) : KM_DEF;
     const int nm = (argc > 4) ? stoi(argv[4]) : NM_DEF;
     const bool file_output = (argc > 5) ? stoi(argv[5]) : FOUT_DEF;
+    const bool screen_output = (argc > 6) ? stoi(argv[6]) : SOUT_DEF;
 
     const size_t ims = im + 2;
     const size_t lms = lm + 2;
@@ -84,19 +87,6 @@ int main(int argc, char **argv) {
         out_lst << "1. im,lm,km,nm= " << im << " " << lm << " " << km << " " << nm << std::endl;
         out_lst << "1. hx,hy,hz= " << hx << " " << hy << " " << hz << std::endl;
     }
-
-
-/*
-      open(25,file='smt45.lst',form='formatted')
-
-      write(25,*)'qj=',qj
-
-      print*,'1. im,lm,km,nm=',im,lm,km,nm
-      write(25,100) im,lm,km,nm
-  100 format('1. im,lm,km,nm=',4i6)
-      write(25,102) hx,hy,hz
-  102 format('1. hx,hy,hz=',3f10.3)
-*/
 
 /*
 c==============================================================
@@ -499,7 +489,6 @@ c   vychislenie vektornogo potentsiala
 
     do {
         n++;
-
 /*
 c  ax
       sx=0.d0
@@ -643,15 +632,9 @@ c  az
         copySliceZ(az, 0, km, im + 2, lm + 2);
         copySliceZ(az, km+1, 1, im + 2, lm + 2);
 
-/*
-      print 104,n,sx,sy,sz
-  104 format('n,sx,sy,sz=',i6,3e12.4)
-
-      if((sx.gt.eps).or.(sy.gt.eps).or.(sz.gt.eps)) goto 8
-
-      write(25,104) n,sx,sy,sz
-*/
-        //std::cout << n << " " << sx << " " << sy << " " << sz << std::endl;
+        if (screen_output) {
+            std::cout << n << " " << sx << " " << sy << " " << sz << std::endl;
+        }
     } while (sx > eps || sy > eps || sz > eps);
 
     if (file_output) {
@@ -746,7 +729,6 @@ c===================================== divj
             enddo
          enddo
       enddo
-      write(25,*) 'max(divj)=',s
 */
     double maxval = 0.0;
     for (int k = 1; k < km + 1; k++) {
@@ -777,7 +759,6 @@ c===================================== divB
             enddo
          enddo
       enddo
-      write(25,*) 'max(divB)=',s
 */
     maxval = 0.0;
     for (int k = 0; k < km + 1; k++) {
@@ -813,7 +794,6 @@ c===================================== divA
             enddo
          enddo
       enddo
-      write(25,*) 'max(divA)=',s1,i1,l1,k1
 */
     maxval = 0.0;
     Index3 maxind {0, 0, 0};
@@ -854,8 +834,6 @@ c===================================== rotB-j
             enddo
          enddo
       enddo
-      write(25,105) s1,i1,l1,k1
-  105 format(' max(rotB_x-jx)=',e12.4,3i4)
 */
 
     auto computeMaxRotDiff = [im, lm, km](int dim, const DArray3 &b1, const DArray3 &b2, const DArray3 &j, double rh1, double rh2) ->
@@ -903,8 +881,6 @@ c===================================== rotB-j
             enddo
          enddo
       enddo
-      write(25,106) s2,i1,l1,k1
-  106 format(' max(rotB_y-jy)=',e12.4,3i4)
 */
 
     const auto mry = computeMaxRotDiff(1, bx, bz, jy, rhz, rhx);
@@ -925,8 +901,6 @@ c===================================== rotB-j
             enddo
          enddo
       enddo
-      write(25,107) s3,i1,l1,k1
-  107 format(' max(rotB_z-jz)=',e12.4,3i4)
 */
 
     const auto mrz = computeMaxRotDiff(2, by, bx, jz, rhx, rhy);
