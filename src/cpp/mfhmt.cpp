@@ -75,6 +75,16 @@ int main(int argc, char **argv) {
     const double r0 = 1.0;
     const double h0 = zm / (2.0 * pi);
 
+    std::ofstream out_lst;
+
+    if (file_output) {
+        out_lst.open("smt45.lst");
+        out_lst << "qj= " << qj << std::endl;
+        out_lst << "1. im,lm,km,nm= " << im << " " << lm << " " << km << " " << nm << std::endl;
+        out_lst << "1. hx,hy,hz= " << hx << " " << hy << " " << hz << std::endl;
+    }
+
+
 /*
       open(25,file='smt45.lst',form='formatted')
 
@@ -160,6 +170,7 @@ c==============================================================
         r(i+1,l+1,k) = r(i+1,l+1,k) + sw * (dx * dy + s3);
     };
 
+    auto ts = std::chrono::steady_clock::now();
 
 /*
 c zadanie vintovogo toka
@@ -626,6 +637,10 @@ c  az
 */
     } while (sx > eps || sy > eps || sz > eps);
 
+    if (file_output) {
+        out_lst << "n,sx,sy,sz= " << n << " " << formatS(sx) << " " << formatS(sy) << " " << formatS(sz) << std::endl;
+    }
+
 /*
 c========================= bx, by, bz ============
 
@@ -685,6 +700,21 @@ c========================= bx, by, bz ============
         }
     }
 
+    auto outputMax = [&file_output, &out_lst](const std::string &str, double m) {
+        if (file_output) {
+            out_lst << str << formatS(m) << std::endl;
+        }
+    };
+
+    auto outputMaxI = [&file_output, &out_lst](const std::string &str, double m, const std::array<int, 3> &ind) {
+        if (file_output) {
+            out_lst << str << formatS(m) <<
+                " " << ind[0] + 1 <<
+                " " << ind[1] + 1 <<
+                " " << ind[2] + 1 << std::endl;
+        }
+    };
+
 /*
 c===================================== divj
       s=0.d0
@@ -700,19 +730,22 @@ c===================================== divj
       enddo
       write(25,*) 'max(divj)=',s
 */
-    double s = 0.0;
+    double maxval = 0.0;
     for (int k = 1; k < km + 1; k++) {
         for (int l = 1; l < lm + 1; l++) {
             for (int i = 1; i < im + 1; i++) {
-                const double s1 = (jx(i,l,k) - jx(i-1,l,k)) * rhx +
-                                (jy(i,l,k) - jy(i,l-1,k)) * rhy +
-                                (jz(i,l,k) - jz(i,l,k-1)) * rhz;
-                if (std::abs(s1) > s) {
-                    s = s1;
+                const double s = (jx(i,l,k) - jx(i-1,l,k)) * rhx +
+                                 (jy(i,l,k) - jy(i,l-1,k)) * rhy +
+                                 (jz(i,l,k) - jz(i,l,k-1)) * rhz;
+                if (std::abs(s) > maxval) {
+                    maxval = s;
                 }
             }
         }
     }
+
+    outputMax("max(divj)= ", maxval);
+
 /*
 c===================================== divB
       s=0.d0
@@ -728,19 +761,21 @@ c===================================== divB
       enddo
       write(25,*) 'max(divB)=',s
 */
-    s = 0.0;
+    maxval = 0.0;
     for (int k = 0; k < km + 1; k++) {
         for (int l = 0; l < lm + 1; l++) {
             for (int i = 0; i < im + 1; i++) {
-                const double s1 = (bx(i+1,l,k) - bx(i,l,k)) * rhx +
-                                  (by(i,l+1,k) - by(i,l,k)) * rhy +
-                                  (bz(i,l,k+1) - bz(i,l,k)) * rhz;
-                if (std::abs(s1) > s) {
-                    s = s1;
+                const double s = (bx(i+1,l,k) - bx(i,l,k)) * rhx +
+                                 (by(i,l+1,k) - by(i,l,k)) * rhy +
+                                 (bz(i,l,k+1) - bz(i,l,k)) * rhz;
+                if (std::abs(s) > maxval) {
+                    maxval = s;
                 }
             }
         }
     }
+
+    outputMax("max(divB)= ", maxval);
 /*
 c===================================== divA
       s1=0.d0
@@ -762,21 +797,23 @@ c===================================== divA
       enddo
       write(25,*) 'max(divA)=',s1,i1,l1,k1
 */
-    s = 0.0;
+    maxval = 0.0;
     std::array<int, 3> maxind {0, 0, 0};
     for (int k = 1; k < km + 1; k++) {
         for (int l = 1; l < lm + 1; l++) {
             for (int i = 1; i < im + 1; i++) {
-                const double s1 = (ax(i,l,k) - ax(i-1,l,k)) * rhx +
-                                  (ay(i,l,k) - ay(i,l-1,k)) * rhy +
-                                  (az(i,l,k) - az(i,l,k-1)) * rhz;
-                if (std::abs(s1) > s) {
-                    s = s1;
+                const double s = (ax(i,l,k) - ax(i-1,l,k)) * rhx +
+                                 (ay(i,l,k) - ay(i,l-1,k)) * rhy +
+                                 (az(i,l,k) - az(i,l,k-1)) * rhz;
+                if (std::abs(s) > maxval) {
+                    maxval = std::abs(s);
                     maxind = {i, l, k};
                 }
             }
         }
     }
+
+    outputMaxI("max(divA)= ", maxval, maxind);
 
 /*
 c===================================== rotB-j
@@ -802,20 +839,22 @@ c===================================== rotB-j
       write(25,105) s1,i1,l1,k1
   105 format(' max(rotB_x-jx)=',e12.4,3i4)
 */
-    s = 0.0;
+    maxval = 0.0;
     maxind = {0, 0, 0};
     for (int k = 1; k < km + 1; k++) {
         for (int l = 1; l < lm + 1; l++) {
             for (int i = 0; i < im + 1; i++) {
-                const double s1 = (bz(i,l,k) - bz(i,l-1,k)) * rhy +
-                                  (by(i,l,k) - by(i,l,k-1)) * rhz - jx(i,l,k);
-                if (std::abs(s1) > s) {
-                    s = s1;
+                const double s = (bz(i,l,k) - bz(i,l-1,k)) * rhy -
+                                 (by(i,l,k) - by(i,l,k-1)) * rhz - jx(i,l,k);
+                if (std::abs(s) > maxval) {
+                    maxval = s;
                     maxind = {i, l, k};
                 }
             }
         }
     }
+
+    outputMaxI("max(rotB_x-jx)= ", maxval, maxind);
 
 /*
       do k=2,km+1
@@ -835,20 +874,22 @@ c===================================== rotB-j
       write(25,106) s2,i1,l1,k1
   106 format(' max(rotB_y-jy)=',e12.4,3i4)
 */
-    s = 0.0;
+    maxval = 0.0;
     maxind = {0, 0, 0};
     for (int k = 1; k < km + 1; k++) {
         for (int l = 0; l < lm + 1; l++) {
             for (int i = 1; i < im + 1; i++) {
-                const double s1 = (bx(i,l,k) - bx(i,l,k-1)) * rhz +
-                                  (bz(i,l,k) - bz(i-1,l,k)) * rhx - jy(i,l,k);
-                if (std::abs(s1) > s) {
-                    s = s1;
+                const double s = (bx(i,l,k) - bx(i,l,k-1)) * rhz -
+                                 (bz(i,l,k) - bz(i-1,l,k)) * rhx - jy(i,l,k);
+                if (std::abs(s) > maxval) {
+                    maxval = s;
                     maxind = {i, l, k};
                 }
             }
         }
     }
+
+    outputMaxI("max(rotB_y-jy)= ", maxval, maxind);
 
 /*
       do k=1,km+1
@@ -868,19 +909,29 @@ c===================================== rotB-j
       write(25,107) s3,i1,l1,k1
   107 format(' max(rotB_z-jz)=',e12.4,3i4)
 */
-    s = 0.0;
+    maxval = 0.0;
     maxind = {0, 0, 0};
     for (int k = 0; k < km + 1; k++) {
         for (int l = 1; l < lm + 1; l++) {
             for (int i = 1; i < im + 1; i++) {
-                const double s1 = (by(i,l,k) - by(i-1,l,k)) * rhx +
-                                  (bx(i,l,k) - by(i,l-1,k)) * rhy - jz(i,l,k);
-                if (std::abs(s1) > s) {
-                    s = s1;
+                const double s = (by(i,l,k) - by(i-1,l,k)) * rhx -
+                                 (bx(i,l,k) - bx(i,l-1,k)) * rhy - jz(i,l,k);
+                if (std::abs(s) > maxval) {
+                    maxval = s;
                     maxind = {i, l, k};
                 }
             }
         }
+    }
+
+    outputMaxI("max(rotB_j-jz)= ", maxval, maxind);
+
+    auto te = std::chrono::steady_clock::now();
+    auto work_time = std::chrono::duration<double>(te - ts).count();
+    std::cout << "TIME: " << work_time << endl;
+
+    if (file_output) {
+        out_lst.close();
     }
 
     if (file_output) {

@@ -38,6 +38,18 @@ void outputFull(const string &header, const DArray3 &data, ofstream &out) {
     output(header, data, {0, data.size(0), 0, data.size(1)}, out);
 }*/
 
+std::string formatS(double v, int width, int precision) {
+    std::ostringstream out;
+    out << std::scientific << std::uppercase << std::setw(width) << std::setprecision(precision) << v;
+    return out.str();
+}
+
+std::string formatI(int v, int width) {
+    std::ostringstream out;
+    out << std::setw(width) << v;
+    return out.str();
+}
+
 void outputDat(const std::string &filename, const DArray3 &data, int sx, int sy, int sz) {
     std::ofstream out(filename.c_str());
 /*

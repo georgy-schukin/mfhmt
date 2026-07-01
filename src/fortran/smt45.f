@@ -34,7 +34,9 @@ c      km=20
       
       r0=1.d0
       h0=zm/(2.d0*pi)
-      write(25,*)'qj=',qj
+
+      write(25,300) qj
+  300 format('qj=',f10.3)
 
       print*,'1. im,lm,km,nm=',im,lm,km,nm
       write(25,100) im,lm,km,nm
@@ -278,7 +280,7 @@ c  az
 
 c      write(25,*) 'ax. n,sx=',n,sx
       print 104,n,sx,sy,sz
-  104 format('n,sx,sy,sz=',i6,3e12.4)
+  104 format('n,sx,sy,sz=',i6,3es12.4)
 
       if((sx.gt.eps).or.(sy.gt.eps).or.(sz.gt.eps)) goto 8
 c      if(n.lt.200) goto 8
@@ -325,7 +327,8 @@ c===================================== divj
             enddo
          enddo
       enddo
-      write(25,*) 'max(divj)=',s
+      write(25,200) s
+  200 format('max(divj)=',es12.4)
 c===================================== divB
       s=0.d0
       do k=1,km+1
@@ -338,7 +341,8 @@ c===================================== divB
             enddo
          enddo
       enddo
-      write(25,*) 'max(divB)=',s
+      write(25,201) s
+  201 format('max(divB)=',es12.4)
 c===================================== divA
       s1=0.d0
       do k=2,km+1
@@ -357,7 +361,8 @@ c===================================== divA
             enddo
          enddo
       enddo
-      write(25,*) 'max(divA)=',s1,i1,l1,k1
+      write(25,202) s1,i1,l1,k1
+  202 format('max(divA)=',es12.4,3i4)
 
 c===================================== rotB-j
       s1=0.d0
@@ -380,7 +385,7 @@ c===================================== rotB-j
          enddo
       enddo
       write(25,105) s1,i1,l1,k1
-  105 format(' max(rotB_x-jx)=',e12.4,3i4)
+  105 format('max(rotB_x-jx)=',es12.4,3i4)
 
       do k=2,km+1
          do l=1,lm+1
@@ -397,7 +402,7 @@ c===================================== rotB-j
          enddo
       enddo
       write(25,106) s2,i1,l1,k1
-  106 format(' max(rotB_y-jy)=',e12.4,3i4)
+  106 format('max(rotB_y-jy)=',es12.4,3i4)
 
       do k=1,km+1
          do l=2,lm+1
@@ -414,7 +419,7 @@ c===================================== rotB-j
          enddo
       enddo
       write(25,107) s3,i1,l1,k1
-  107 format(' max(rotB_z-jz)=',e12.4,3i4)
+  107 format('max(rotB_z-jz)=',es12.4,3i4)
 
 c===================================== write
 
