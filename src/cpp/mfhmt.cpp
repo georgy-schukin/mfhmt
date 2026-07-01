@@ -404,6 +404,96 @@ c   vychislenie vektornogo potentsiala
     const double c21 = hy / hx;
     const double c23 = hy / hz;
 
+    auto makeIndex = [](int dim, int i1, int i2, int ii) -> Index3 {
+        switch (dim) {
+        case 0: return Index3 {ii, i1, i2};
+        case 1: return Index3 {i1, ii, i2};
+        case 2: return Index3 {i1, i2, ii};
+        }
+    };
+
+    auto copySliceX = [](DArray3 &arr, int dst, int src, int lend, int kend) {
+        for (int l = 0; l < lend; l++) {
+            for (int k = 0; k < kend; k++) {
+                arr(dst, l, k) = arr(src, l, k);
+            }
+        }
+    };
+
+    auto copySliceY = [](DArray3 &arr, int dst, int src, int iend, int kend) {
+        for (int i = 0; i < iend; i++) {
+            for (int k = 0; k < kend; k++) {
+                arr(i, dst, k) = arr(i, src, k);
+            }
+        }
+    };
+
+    auto copySliceZ = [](DArray3 &arr, int dst, int src, int iend, int lend) {
+        for (int i = 0; i < iend; i++) {
+            for (int l = 0; l < lend; l++) {
+                arr(i, l, dst) = arr(i, l, src);
+            }
+        }
+    };
+
+    auto computeBoundaryX = [im, lm, km](DArray3 &ax, DArray3 &ay, DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
+        for (int l = 1; l < lm + 1; l++) {
+            for (int k = 1; k < km + 1; k++) {
+                ax(dst, l, k) = ax(src1, l, k) +
+                                c1 * (ay(src2, l, k) - ay(src2, l - 1, k)) +
+                                c2 * (az(src2, l, k) - az(src2, l, k - 1));
+            }
+        }
+    };
+
+    auto computeBoundaryY = [im, lm, km](DArray3 &ax, DArray3 &ay, DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
+        for (int i = 1; i < im + 1; i++) {
+            for (int k = 1; k < km + 1; k++) {
+                ay(i, dst, k) = ay(i, src1, k) +
+                                c1 * (ax(i, src2, k) - ax(i - 1, src2, k)) +
+                                c2 * (az(i, src2, k) - az(i, src2, k - 1));
+            }
+        }
+    };
+
+    auto computeDiff = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
+        double maxdiff = 0.0;
+        for (int k = 1; k < kend; k++) {
+            for (int l = 1; l < lend; l++) {
+                for (int i = 1; i < iend; i++) {
+                    const double s = ((arr(i+1,l,k) + arr(i-1,l,k)) * rhx2 +
+                                      (arr(i,l+1,k) + arr(i,l-1,k)) * rhy2 +
+                                      (arr(i,l,k+1) + arr(i,l,k-1)) * rhz2 + j(i,l,k)) * rc2;
+                    maxdiff = std::max(std::abs(arr(i,l,k) - s), maxdiff);
+                    arr(i,l,k) = s;
+                }
+            }
+        }
+        return maxdiff;
+    };
+
+    auto computeDiffZ = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
+        double maxdiff = 0.0;
+        for (int l = 1; l < lend; l++) {
+            for (int i = 1; i < iend; i++) {
+                for (int k = 1; k < kend; k++) {
+                    const double s = ((arr(i+1,l,k) + arr(i-1,l,k)) * rhx2 +
+                                      (arr(i,l+1,k) + arr(i,l-1,k)) * rhy2 +
+                                      (arr(i,l,k+1) + arr(i,l,k-1)) * rhz2 + j(i,l,k)) * rc2;
+                    maxdiff = std::max(std::abs(arr(i,l,k) - s), maxdiff);
+                    arr(i,l,k) = s;
+                }
+                const double s = ((arr(i+1,l,kend) + arr(i-1,l,kend)) * rhx2 +
+                                  (arr(i,l+1,kend) + arr(i,l-1,kend)) * rhy2 +
+                                  (arr(i,l,1) + arr(i,l,kend-1)) * rhz2 + j(i,l,kend)) * rc2;
+                maxdiff = std::max(std::abs(arr(i,l,kend) - s), maxdiff);
+                arr(i,l,kend) = s;
+                arr(i,l,0) = s;
+            }
+        }
+        return maxdiff;
+    };
+
     int n = 0;
     double sx = 0.0, sy = 0.0, sz = 0.0;
 
@@ -426,18 +516,7 @@ c  ax
          enddo
       enddo
 */
-        sx = 0.0;
-        for (int k = 1; k < km + 1; k++) {
-            for (int l = 1; l < lm + 1; l++) {
-                for (int i = 1; i < im; i++) {
-                    const double s = ((ax(i+1,l,k) + ax(i-1,l,k)) * rhx2 +
-                                (ax(i,l+1,k) + ax(i,l-1,k)) * rhy2 +
-                                (ax(i,l,k+1) + ax(i,l,k-1)) * rhz2 + jx(i,l,k)) * rc2;
-                    sx = std::max(std::abs(ax(i,l,k) - s), sx);
-                    ax(i,l,k) = s;
-                }
-            }
-        }
+        sx = computeDiff(ax, jx, im, lm + 1, km + 1);
 
 
 /*
@@ -450,16 +529,8 @@ c  ax
          enddo
       enddo
 */
-        for (int k = 1; k < km + 1; k++) {
-            for (int l = 1; l < lm + 1; l++) {
-                ax(0,l,k) = ax(1,l,k) +
-                            c12 * (ay(1,l,k) - ay(1,l-1,k)) +
-                            c13 * (az(1,l,k) - az(1,l,k-1));
-                ax(im,l,k) = ax(im-1,l,k) -
-                            c12 * (ay(im,l,k) - ay(im,l-1,k)) -
-                            c13 * (az(im,l,k) - az(im,l,k-1));
-            }
-        }
+        computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13);
+        computeBoundaryX(ax, ay, az, im, im - 1, im, -c12, -c13);
 
 /*
       do l=1,lm+2
@@ -469,12 +540,8 @@ c  ax
          enddo
       enddo
 */
-        for (int l = 0; l < lm + 2; l++) {
-            for (int i = 0; i < im + 1; i++) {
-                ax(i,l,0) = ax(i,l,km);
-                ax(i,l,km+1) = ax(i,l,1);
-            }
-        }
+        copySliceZ(ax, 0, km, im + 1, lm + 2);
+        copySliceZ(ax, km + 1, 1, im + 1, lm + 2);
 
 /*
       do k=1,km+2
@@ -484,12 +551,8 @@ c  ax
          enddo
       enddo
 */
-        for (int k = 0; k < km + 2; k++) {
-            for (int i = 0; i < im + 1; i++) {
-                ax(i,0,k) = ax(i,1,k);
-                ax(i,lm+1,k) = ax(i,lm,k);
-            }
-        }
+        copySliceY(ax, 0, 1, im + 1, km + 2);
+        copySliceY(ax, lm + 1, lm, im + 1, km + 2);
 
 /*
 c  ay
@@ -507,18 +570,7 @@ c  ay
          enddo
       enddo
 */
-        sy = 0.0;
-        for (int k = 1; k < km + 1; k++) {
-            for (int l = 1; l < lm; l++) {
-                for (int i = 1; i < im + 1; i++) {
-                    const double s = ((ay(i+1,l,k) + ay(i-1,l,k)) * rhx2 +
-                                      (ay(i,l+1,k) + ay(i,l-1,k)) * rhy2 +
-                                      (ay(i,l,k+1) + ay(i,l,k-1)) * rhz2 + jy(i,l,k)) * rc2;
-                    sy = std::max(std::abs(ay(i,l,k) - s), sy);
-                    ay(i,l,k) = s;
-                }
-            }
-        }
+        sy = computeDiff(ay, jy, im + 1, lm, km + 1);
 
 /*
       do k=2,km+1
@@ -530,16 +582,8 @@ c  ay
          enddo
       enddo
 */
-        for (int k = 1; k < km + 1; k++) {
-            for (int i = 1; i < im + 1; i++) {
-                ay(i,0,k) = ay(i,1,k) +
-                            c21 * (ax(i,1,k) - ax(i-1,1,k)) +
-                            c23 * (az(i,1,k) - az(i,1,k-1));
-                ay(i,lm,k) = ay(i,lm-1,k) -
-                            c21 * (ax(i,lm,k) - ax(i-1,lm,k)) -
-                            c23 * (az(i,lm,k) - az(i,lm,k-1));
-            }
-        }
+        computeBoundaryY(ax, ay, az, 0, 1, 1, c21, c23);
+        computeBoundaryY(ax, ay, az, lm, lm - 1, lm, -c21, -c23);
 
 /*
       do l=1,lm+1
@@ -549,12 +593,8 @@ c  ay
          enddo
       enddo
 */
-        for (int l = 0; l < lm + 1; l++) {
-            for (int i = 0; i < im + 1; i++) {
-                ay(i,l,0) = ay(i,l,km);
-                ay(i,l,km+1) = ay(i,l,1);
-            }
-        }
+        copySliceZ(ay, 0, km, im + 1, lm + 1);
+        copySliceZ(ay, km + 1, 1, im + 1, lm + 1);
 
 /*
       do k=1,km+2
@@ -564,12 +604,8 @@ c  ay
          enddo
       enddo
 */
-        for (int k = 0; k < km + 2; k++) {
-            for (int l = 0; l < lm + 1; l++) {
-                ay(0,l,k) = ay(1,l,k);
-                ay(im+1,l,k) = ay(im,l,k);
-            }
-        }
+        copySliceX(ay, 0, 1, lm + 1, km + 2);
+        copySliceX(ay, im + 1, im, lm + 1, km + 2);
 
 /*
 c  az
@@ -593,25 +629,8 @@ c  az
             az(i,l,1)=s
          enddo
       enddo
-*/
-        sz = 0.0;
-        for (int l = 1; l < lm + 1; l++) {
-            for (int i = 1; i < im + 1; i++) {
-                for (int k = 1; k < km; k++) {
-                    const double s = ((az(i+1,l,k) + az(i-1,l,k)) * rhx2 +
-                                      (az(i,l+1,k) + az(i,l-1,k)) * rhy2 +
-                                      (az(i,l,k+1) + az(i,l,k-1)) * rhz2 + jz(i,l,k)) * rc2;
-                    sz = std::max(std::abs(az(i,l,k) - s), sz);
-                    az(i,l,k) = s;
-                }
-                const double s = ((az(i+1,l,km) + az(i-1,l,km)) * rhx2 +
-                                  (az(i,l+1,km) + az(i,l-1,km)) * rhy2 +
-                                  (az(i,l,1) + az(i,l,km-1)) * rhz2 + jz(i,l,km)) * rc2;
-                sz = std::max(std::abs(az(i,l,km) - s), sz);
-                az(i,l,km) = s;
-                az(i,l,0) = s;
-            }
-        }
+*/        
+        sz = computeDiffZ(az, jz, im + 1, lm + 1, km);
 
 /*
       do l=1,lm+2
@@ -621,12 +640,8 @@ c  az
          enddo
       enddo
 */
-        for (int l = 0; l < lm + 2; l++) {
-            for (int i = 0; i < im + 2; i++) {
-                az(i,l,0) = az(i,l,km);
-                az(i,l,km+1) = az(i,l,1);
-            }
-        }
+        copySliceZ(az, 0, km, im + 2, lm + 2);
+        copySliceZ(az, km+1, 1, im + 2, lm + 2);
 
 /*
       print 104,n,sx,sy,sz
@@ -636,6 +651,7 @@ c  az
 
       write(25,104) n,sx,sy,sz
 */
+        //std::cout << n << " " << sx << " " << sy << " " << sz << std::endl;
     } while (sx > eps || sy > eps || sz > eps);
 
     if (file_output) {
