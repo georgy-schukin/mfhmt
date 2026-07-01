@@ -66,7 +66,7 @@ void outputDat(const std::string &filename, const DArray3 &data, int sx, int sy,
         for (int l = 0; l < sy; l++) {
             for (int i = 0; i < sx; i++) {
                 out << setw(5) << i + 1 << setw(5) << l + 1 << setw(5) << k + 1;
-                out << setw(12) << std::scientific << std::uppercase << setprecision(4) << data(i, l , k);
+                out << setw(12) << std::scientific << std::uppercase << setprecision(4) << data(i, l, k);
                 out << std::endl;
             }
         }

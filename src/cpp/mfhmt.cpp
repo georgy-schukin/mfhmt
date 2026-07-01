@@ -10,6 +10,7 @@
 #include <string>
 #include <chrono>
 #include <algorithm>
+#include <tuple>
 
 using namespace std;
 
@@ -653,14 +654,27 @@ c========================= bx, by, bz ============
          enddo
       enddo
 */
-    for (int k = 0; k < km + 1; k++) {
-        for (int l = 0; l < lm + 1; l++) {
-            for (int i = 0; i < im + 2; i++) {
-                bx(i,l,k) = (az(i,l+1,k) - az(i,l,k)) * rhy -
-                            (ay(i,l,k+1) - ay(i,l,k)) * rhz;
+
+    auto computeB = [im, lm, km](int dim, const DArray3 &a1, const DArray3 &a2, DArray3 &b, double rh1, double rh2) {
+        const static Index3 i_end {2, 1, 1};
+        const static Index3 l_end {1, 2, 1};
+        const static Index3 k_end {1, 1, 2};
+        const static std::array<Index3, 3> shift1 {Index3 {0, 1, 0}, Index3 {0, 0, 1}, Index3 {1, 0, 0}};
+        const static std::array<Index3, 3> shift2 {Index3 {0, 0, 1}, Index3 {1, 0, 0}, Index3 {0, 1, 0}};
+
+        const auto &s1 = shift1[dim];
+        const auto &s2 = shift2[dim];
+        for (int k = 0; k < km + k_end[dim]; k++) {
+            for (int l = 0; l < lm + l_end[dim]; l++) {
+                for (int i = 0; i < im + i_end[dim]; i++) {
+                    b(i,l,k) = (a1(i+s1[0],l+s1[1],k+s1[2]) - a1(i,l,k)) * rh1 -
+                               (a2(i+s2[0],l+s2[1],k+s2[2]) - a2(i,l,k)) * rh2;
+                }
             }
         }
-    }
+    };
+
+    computeB(0, az, ay, bx, rhy, rhz);
 
 /*
       do k=1,km+1
@@ -672,14 +686,8 @@ c========================= bx, by, bz ============
          enddo
       enddo
 */
-    for (int k = 0; k < km + 1; k++) {
-        for (int l = 0; l < lm + 2; l++) {
-            for (int i = 0; i < im + 1; i++) {
-                by(i,l,k) = (ax(i,l,k+1) - ax(i,l,k)) * rhz -
-                            (az(i+1,l,k) - az(i,l,k)) * rhx;
-            }
-        }
-    }
+
+    computeB(1, ax, az, by, rhz, rhx);
 
 /*
       do k=1,km+2
@@ -691,14 +699,8 @@ c========================= bx, by, bz ============
          enddo
       enddo
 */
-    for (int k = 0; k < km + 2; k++) {
-        for (int l = 0; l < lm + 1; l++) {
-            for (int i = 0; i < im + 1; i++) {
-                bz(i,l,k) = (ay(i+1,l,k) - ay(i,l,k)) * rhx -
-                            (ax(i,l+1,k) - ax(i,l,k)) * rhy;
-            }
-        }
-    }
+
+    computeB(2, ay, ax, bz, rhx, rhy);
 
     auto outputMax = [&file_output, &out_lst](const std::string &str, double m) {
         if (file_output) {
@@ -798,7 +800,7 @@ c===================================== divA
       write(25,*) 'max(divA)=',s1,i1,l1,k1
 */
     maxval = 0.0;
-    std::array<int, 3> maxind {0, 0, 0};
+    Index3 maxind {0, 0, 0};
     for (int k = 1; k < km + 1; k++) {
         for (int l = 1; l < lm + 1; l++) {
             for (int i = 1; i < im + 1; i++) {
@@ -839,22 +841,36 @@ c===================================== rotB-j
       write(25,105) s1,i1,l1,k1
   105 format(' max(rotB_x-jx)=',e12.4,3i4)
 */
-    maxval = 0.0;
-    maxind = {0, 0, 0};
-    for (int k = 1; k < km + 1; k++) {
-        for (int l = 1; l < lm + 1; l++) {
-            for (int i = 0; i < im + 1; i++) {
-                const double s = (bz(i,l,k) - bz(i,l-1,k)) * rhy -
-                                 (by(i,l,k) - by(i,l,k-1)) * rhz - jx(i,l,k);
-                if (std::abs(s) > maxval) {
-                    maxval = s;
-                    maxind = {i, l, k};
+
+    auto computeMaxRotDiff = [im, lm, km](int dim, const DArray3 &b1, const DArray3 &b2, const DArray3 &j, double rh1, double rh2) ->
+    std::pair<double, Index3> {
+        const static Index3 i_start {0, 1, 1};
+        const static Index3 l_start {1, 0, 1};
+        const static Index3 k_start {1, 1, 0};
+        const static std::array<Index3, 3> shift1 {Index3 {0, -1, 0}, Index3 {0, 0, -1}, Index3 {-1, 0, 0}};
+        const static std::array<Index3, 3> shift2 {Index3 {0, 0, -1}, Index3 {-1, 0, 0}, Index3 {0, -1, 0}};
+
+        double maxval = 0.0;
+        Index3 maxind {0, 0, 0};
+        const auto &s1 = shift1[dim];
+        const auto &s2 = shift2[dim];
+        for (int k = k_start[dim]; k < km + 1; k++) {
+            for (int l = l_start[dim]; l < lm + 1; l++) {
+                for (int i = i_start[dim]; i < im + 1; i++) {
+                    const double s = (b1(i,l,k) - b1(i+s1[0],l+s1[1],k+s1[2])) * rh1 -
+                                     (b2(i,l,k) - b2(i+s2[0],l+s2[1],k+s2[2])) * rh2 - j(i,l,k);
+                    if (std::abs(s) > maxval) {
+                        maxval = s;
+                        maxind = Index3 {i, l, k};
+                    }
                 }
             }
         }
-    }
+        return std::make_pair(maxval, maxind);
+    };
 
-    outputMaxI("max(rotB_x-jx)= ", maxval, maxind);
+    const auto mrx = computeMaxRotDiff(0, bz, by, jx, rhy, rhz);
+    outputMaxI("max(rotB_x-jx)= ", mrx.first, mrx.second);
 
 /*
       do k=2,km+1
@@ -874,22 +890,9 @@ c===================================== rotB-j
       write(25,106) s2,i1,l1,k1
   106 format(' max(rotB_y-jy)=',e12.4,3i4)
 */
-    maxval = 0.0;
-    maxind = {0, 0, 0};
-    for (int k = 1; k < km + 1; k++) {
-        for (int l = 0; l < lm + 1; l++) {
-            for (int i = 1; i < im + 1; i++) {
-                const double s = (bx(i,l,k) - bx(i,l,k-1)) * rhz -
-                                 (bz(i,l,k) - bz(i-1,l,k)) * rhx - jy(i,l,k);
-                if (std::abs(s) > maxval) {
-                    maxval = s;
-                    maxind = {i, l, k};
-                }
-            }
-        }
-    }
 
-    outputMaxI("max(rotB_y-jy)= ", maxval, maxind);
+    const auto mry = computeMaxRotDiff(1, bx, bz, jy, rhz, rhx);
+    outputMaxI("max(rotB_y-jy)= ", mry.first, mry.second);
 
 /*
       do k=1,km+1
@@ -909,22 +912,9 @@ c===================================== rotB-j
       write(25,107) s3,i1,l1,k1
   107 format(' max(rotB_z-jz)=',e12.4,3i4)
 */
-    maxval = 0.0;
-    maxind = {0, 0, 0};
-    for (int k = 0; k < km + 1; k++) {
-        for (int l = 1; l < lm + 1; l++) {
-            for (int i = 1; i < im + 1; i++) {
-                const double s = (by(i,l,k) - by(i-1,l,k)) * rhx -
-                                 (bx(i,l,k) - bx(i,l-1,k)) * rhy - jz(i,l,k);
-                if (std::abs(s) > maxval) {
-                    maxval = s;
-                    maxind = {i, l, k};
-                }
-            }
-        }
-    }
 
-    outputMaxI("max(rotB_j-jz)= ", maxval, maxind);
+    const auto mrz = computeMaxRotDiff(2, by, bx, jz, rhx, rhy);
+    outputMaxI("max(rotB_j-jz)= ", mrz.first, mrz.second);
 
     auto te = std::chrono::steady_clock::now();
     auto work_time = std::chrono::duration<double>(te - ts).count();
