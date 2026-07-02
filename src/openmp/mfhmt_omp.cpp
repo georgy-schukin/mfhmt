@@ -13,6 +13,7 @@
 #include <chrono>
 #include <algorithm>
 #include <tuple>
+#include <functional>
 
 using namespace std;
 
@@ -213,7 +214,7 @@ int main(int argc, char **argv) {
     const double c23 = hy / hz;
 
     auto copySliceX = [](DArray3 &arr, int dst, int src, int lend, int kend) {
-        #pragma omp parallel for collapse(2)
+        #pragma omp parallel for
         for (int l = 0; l < lend; l++) {
             for (int k = 0; k < kend; k++) {
                 arr(dst, l, k) = arr(src, l, k);
@@ -222,7 +223,7 @@ int main(int argc, char **argv) {
     };
 
     auto copySliceY = [](DArray3 &arr, int dst, int src, int iend, int kend) {
-        #pragma omp parallel for collapse(2)
+        #pragma omp parallel for
         for (int i = 0; i < iend; i++) {
             for (int k = 0; k < kend; k++) {
                 arr(i, dst, k) = arr(i, src, k);
@@ -231,7 +232,7 @@ int main(int argc, char **argv) {
     };
 
     auto copySliceZ = [](DArray3 &arr, int dst, int src, int iend, int lend) {
-        #pragma omp parallel for collapse(2)
+        #pragma omp parallel for
         for (int i = 0; i < iend; i++) {
             for (int l = 0; l < lend; l++) {
                 arr(i, l, dst) = arr(i, l, src);
@@ -240,7 +241,7 @@ int main(int argc, char **argv) {
     };
 
     auto addSliceZ = [](DArray3 &arr, int dst, int src, int iend, int lend) {
-        #pragma omp parallel for collapse(2)
+        #pragma omp parallel for
         for (int i = 0; i < iend; i++) {
             for (int l = 0; l < lend; l++) {
                 arr(i, l, dst) += arr(i, l, src);
@@ -249,7 +250,7 @@ int main(int argc, char **argv) {
     };
 
     auto computeBoundaryX = [im, lm, km](DArray3 &ax, const DArray3 &ay, const DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
-        #pragma omp parallel for collapse(2)
+        #pragma omp parallel for
         for (int l = 1; l < lm + 1; l++) {
             for (int k = 1; k < km + 1; k++) {
                 ax(dst, l, k) = ax(src1, l, k) +
@@ -260,7 +261,7 @@ int main(int argc, char **argv) {
     };
 
     auto computeBoundaryY = [im, lm, km](const DArray3 &ax, DArray3 &ay, const DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
-        #pragma omp parallel for collapse(2)
+        #pragma omp parallel for
         for (int i = 1; i < im + 1; i++) {
             for (int k = 1; k < km + 1; k++) {
                 ay(i, dst, k) = ay(i, src1, k) +
@@ -270,12 +271,12 @@ int main(int argc, char **argv) {
         }
     };
 
-    auto computeStep = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
+    auto computeStepBlock = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int is, int ie, int ls, int le, int ks, int ke) -> double {
         double maxdiff = 0.0;
         //#pragma omp parallel for collapse(3) reduction(max: maxdiff)
-        for (int k = 1; k < kend; k++) {
-            for (int l = 1; l < lend; l++) {
-                for (int i = 1; i < iend; i++) {
+        for (int k = ks; k < ke; k++) {
+            for (int l = ls; l < le; l++) {
+                for (int i = is; i < ie; i++) {
                     const double s = ((arr(i+1,l,k) + arr(i-1,l,k)) * rhx2 +
                                       (arr(i,l+1,k) + arr(i,l-1,k)) * rhy2 +
                                       (arr(i,l,k+1) + arr(i,l,k-1)) * rhz2 + j(i,l,k)) * rc2;
@@ -283,6 +284,73 @@ int main(int argc, char **argv) {
                     arr(i,l,k) = s;
                 }
             }
+        }
+        return maxdiff;
+    };
+
+    auto computeStep = [&](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
+        const int istart = 1, lstart = 1, kstart = 1;
+        const int task_size_x = std::max((iend - istart) / 10, 10);
+        const int task_size_y = std::max((lend - lstart) / 10, 10);
+        const int task_size_z = std::max((kend - kstart) / 10, 10);
+        const int num_tasks_x = std::ceil(float(iend - istart) / task_size_x);
+        const int num_tasks_y = std::ceil(float(lend - lstart) / task_size_y);
+        const int num_tasks_z = std::ceil(float(kend - kstart) / task_size_z);
+        double maxdiff = 0.0;
+        Array3D<int> done(num_tasks_x, num_tasks_y, num_tasks_z);
+        Array3D<int> placed(num_tasks_x, num_tasks_y, num_tasks_z);
+
+        std::function<void(int,int,int)> doTask;
+        std::function<void(int,int,int)> placeTask;
+
+        doTask = [&](int ii, int ll, int kk) {
+            const int is = istart + ii * task_size_x;
+            const int ie = std::min(is + task_size_x, iend);
+            const int ls = lstart + ll * task_size_x;
+            const int le = std::min(ls + task_size_y, lend);
+            const int ks = kstart + kk * task_size_x;
+            const int ke = std::min(ks + task_size_z, kend);
+            const auto mx = computeStepBlock(arr, j, is, ie, ls, le, ks, ke);
+            #pragma omp critical (doTask)
+            {
+                maxdiff = std::max(maxdiff, mx);
+                done(ii, ll, kk) = 1;
+                // When complete, can spawn further tasks.
+                placeTask(ii + 1, ll, kk);
+                placeTask(ii, ll + 1, kk);
+                placeTask(ii, ll, kk + 1);
+            }
+        };
+
+        placeTask = [&](int ii, int ll, int kk) {
+            if (ii >= num_tasks_x || ll >= num_tasks_y || kk >= num_tasks_z) {
+                return;
+            }
+            // Check that task wasn't already placed.
+            if (placed(ii, ll, kk)) {
+                return;
+            }
+            // Check that other required tasks completed already.
+            if ((ii > 0 && !done(ii - 1, ll, kk)) ||
+                (ll > 0 && !done(ii, ll - 1, kk)) ||
+                (kk > 0 && !done(ii, ll, kk - 1))) {
+                return;
+            }
+            placed(ii, ll, kk) = 1;
+            #pragma omp task
+            doTask(ii, ll, kk);
+        };
+
+        #pragma omp parallel
+        {
+            #pragma omp master
+            {
+                // Spawn the first task.
+                placed(0, 0, 0) = 1;
+                #pragma omp task
+                doTask(0, 0, 0);
+            }
+            #pragma omp taskwait
         }
         return maxdiff;
     };
@@ -374,7 +442,7 @@ int main(int argc, char **argv) {
 
         const auto &s1 = shift1[dim];
         const auto &s2 = shift2[dim];
-        #pragma omp parallel for collapse(3)
+        #pragma omp parallel for
         for (int k = 0; k < km + k_end[dim]; k++) {
             for (int l = 0; l < lm + l_end[dim]; l++) {
                 for (int i = 0; i < im + i_end[dim]; i++) {
@@ -402,16 +470,14 @@ int main(int argc, char **argv) {
     };
 
     double maxval = 0.0;
-    #pragma omp parallel for collapse(3) reduction(max: maxval)
+    #pragma omp parallel for reduction(max: maxval)
     for (int k = 1; k < km + 1; k++) {
         for (int l = 1; l < lm + 1; l++) {
             for (int i = 1; i < im + 1; i++) {
                 const double s = (jx(i,l,k) - jx(i-1,l,k)) * rhx +
                                  (jy(i,l,k) - jy(i,l-1,k)) * rhy +
                                  (jz(i,l,k) - jz(i,l,k-1)) * rhz;
-                if (std::abs(s) > maxval) {
-                    maxval = s;
-                }
+                maxval = std::max(std::abs(s), maxval);
             }
         }
     }
@@ -419,16 +485,14 @@ int main(int argc, char **argv) {
     outputMax("max(divj)=", maxval);
 
     maxval = 0.0;
-    #pragma omp parallel for collapse(3) reduction(max: maxval)
+    #pragma omp parallel for reduction(max: maxval)
     for (int k = 0; k < km + 1; k++) {
         for (int l = 0; l < lm + 1; l++) {
             for (int i = 0; i < im + 1; i++) {
                 const double s = (bx(i+1,l,k) - bx(i,l,k)) * rhx +
                                  (by(i,l+1,k) - by(i,l,k)) * rhy +
                                  (bz(i,l,k+1) - bz(i,l,k)) * rhz;
-                if (std::abs(s) > maxval) {
-                    maxval = s;
-                }
+                maxval = std::max(std::abs(s), maxval);
             }
         }
     }
@@ -441,7 +505,7 @@ int main(int argc, char **argv) {
     {
         double maxval_l = 0.0;
         Index3 maxind_l {0, 0, 0};
-        #pragma omp for collapse(3)
+        #pragma omp for
         for (int k = 1; k < km + 1; k++) {
             for (int l = 1; l < lm + 1; l++) {
                 for (int i = 1; i < im + 1; i++) {
@@ -482,21 +546,21 @@ int main(int argc, char **argv) {
         {
             double maxval_l = 0.0;
             Index3 maxind_l {0, 0, 0};
-            #pragma omp for collapse(3)
+            #pragma omp for
             for (int k = k_start[dim]; k < km + 1; k++) {
                 for (int l = l_start[dim]; l < lm + 1; l++) {
                     for (int i = i_start[dim]; i < im + 1; i++) {
                         const double s = (b1(i,l,k) - b1(i+s1[0],l+s1[1],k+s1[2])) * rh1 -
-                                         (b2(i,l,k) - b2(i+s2[0],l+s2[1],k+s2[2])) * rh2 - j(i,l,k);
-                        if (std::abs(s) > maxval) {
-                            maxval = s;
-                            maxind = Index3 {i, l, k};
+                                         (b2(i,l,k) - b2(i+s2[0],l+s2[1],k+s2[2])) * rh2 - j(i,l,k);                        
+                        if (std::abs(s) > maxval_l) {
+                            maxval_l = std::abs(s);
+                            maxind_l = Index3 {i, l, k};
                         }
                     }
                 }
             }
-            #pragma omp critical
-            {
+            #pragma omp critical (maxRotDiff)
+            {                
                 if (maxval_l > maxval) {
                     maxval = maxval_l;
                     maxind = maxind_l;
