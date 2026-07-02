@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
 
     DArray3 jx(ims, lms, kms), jy(ims, lms, kms), jz(ims, lms, kms);
     DArray3 ax(ims, lms, kms), ay(ims, lms, kms), az(ims, lms, kms);
-    DArray3 bx(ims, lms, kms), by(ims, lms, kms), bz(ims, lms, kms);    
+    DArray3 bx(ims, lms, kms), by(ims, lms, kms), bz(ims, lms, kms);
 
     const double qj = 10.0;
     const double pi = 3.14159265358979;
@@ -83,9 +83,9 @@ int main(int argc, char **argv) {
 
     if (file_output) {
         out_lst.open("smt45.lst");
-        out_lst << "qj= " << qj << std::endl;
-        out_lst << "1. im,lm,km,nm= " << im << " " << lm << " " << km << " " << nm << std::endl;
-        out_lst << "1. hx,hy,hz= " << hx << " " << hy << " " << hz << std::endl;
+        out_lst << "qj=" << formatF(qj) << std::endl;
+        out_lst << "1. im,lm,km,nm=" << formatI(im) << formatI(lm) << formatI(km) << formatI(nm) << std::endl;
+        out_lst << "1. hx,hy,hz=" << formatF(hx) << formatF(hy) << formatF(hz) << std::endl;
     }
 
 /*
@@ -147,18 +147,18 @@ c==============================================================
         i = i - 1;
         l = l - 1;
         k = k - 1;
-        p(i,l,k) = p(i,l,k) + su * (dy1 * dz1 + s1);
-        p(i,l,k+1) = p(i,l,k+1) + su * (dy1 * dz - s1);
-        p(i,l+1,k) = p(i,l+1,k) + su * (dy * dz1 - s1);
-        p(i,l+1,k+1) = p(i,l+1,k+1) + su * (dy * dz + s1);
-        q(i,l,k) = q(i,l,k) + sv * (dx1 * dz1 + s2);
-        q(i,l,k+1) = q(i,l,k+1) + sv * (dx1 * dz - s2);
-        q(i+1,l,k) = q(i+1,l,k) + sv * (dx * dz1 - s2);
-        q(i+1,l,k+1) = q(i+1,l,k+1) + sv * (dx * dz + s2);
-        r(i,l,k) = r(i,l,k) + sw * (dx1 * dy1 + s3);
-        r(i,l+1,k) = r(i,l+1,k) + sw * (dx1 * dy - s3);
-        r(i+1,l,k) = r(i+1,l,k) + sw * (dx * dy1 - s3);
-        r(i+1,l+1,k) = r(i+1,l+1,k) + sw * (dx * dy + s3);
+        p(i,l,k) += su * (dy1 * dz1 + s1);
+        p(i,l,k+1) += su * (dy1 * dz - s1);
+        p(i,l+1,k) += su * (dy * dz1 - s1);
+        p(i,l+1,k+1) += su * (dy * dz + s1);
+        q(i,l,k) += sv * (dx1 * dz1 + s2);
+        q(i,l,k+1) += sv * (dx1 * dz - s2);
+        q(i+1,l,k) += sv * (dx * dz1 - s2);
+        q(i+1,l,k+1) += sv * (dx * dz + s2);
+        r(i,l,k) += sw * (dx1 * dy1 + s3);
+        r(i,l+1,k) += sw * (dx1 * dy - s3);
+        r(i+1,l,k) += sw * (dx * dy1 - s3);
+        r(i+1,l+1,k) += sw * (dx * dy + s3);
     };
 
     auto ts = std::chrono::steady_clock::now();
@@ -618,7 +618,7 @@ c  az
             az(i,l,1)=s
          enddo
       enddo
-*/        
+*/
         sz = computeDiffZ(az, jz, im + 1, lm + 1, km);
 
 /*
@@ -638,7 +638,7 @@ c  az
     } while (sx > eps || sy > eps || sz > eps);
 
     if (file_output) {
-        out_lst << "n,sx,sy,sz= " << n << " " << formatS(sx) << " " << formatS(sy) << " " << formatS(sz) << std::endl;
+        out_lst << "n,sx,sy,sz=" << formatI(n) << formatS(sx) << formatS(sy) << formatS(sz) << std::endl;
     }
 
 /*
@@ -709,10 +709,7 @@ c========================= bx, by, bz ============
 
     auto outputMaxI = [&file_output, &out_lst](const std::string &str, double m, const std::array<int, 3> &ind) {
         if (file_output) {
-            out_lst << str << formatS(m) <<
-                " " << ind[0] + 1 <<
-                " " << ind[1] + 1 <<
-                " " << ind[2] + 1 << std::endl;
+            out_lst << str << formatS(m) << formatI(ind[0] + 1) << formatI(ind[1] + 1) << formatI(ind[2] + 1) << std::endl;
         }
     };
 
@@ -744,7 +741,7 @@ c===================================== divj
         }
     }
 
-    outputMax("max(divj)= ", maxval);
+    outputMax("max(divj)=", maxval);
 
 /*
 c===================================== divB
@@ -774,7 +771,7 @@ c===================================== divB
         }
     }
 
-    outputMax("max(divB)= ", maxval);
+    outputMax("max(divB)=", maxval);
 /*
 c===================================== divA
       s1=0.d0
@@ -811,7 +808,7 @@ c===================================== divA
         }
     }
 
-    outputMaxI("max(divA)= ", maxval, maxind);
+    outputMaxI("max(divA)=", maxval, maxind);
 
 /*
 c===================================== rotB-j
@@ -864,7 +861,7 @@ c===================================== rotB-j
     };
 
     const auto mrx = computeMaxRotDiff(0, bz, by, jx, rhy, rhz);
-    outputMaxI("max(rotB_x-jx)= ", mrx.first, mrx.second);
+    outputMaxI("max(rotB_x-jx)=", mrx.first, mrx.second);
 
 /*
       do k=2,km+1
@@ -884,7 +881,7 @@ c===================================== rotB-j
 */
 
     const auto mry = computeMaxRotDiff(1, bx, bz, jy, rhz, rhx);
-    outputMaxI("max(rotB_y-jy)= ", mry.first, mry.second);
+    outputMaxI("max(rotB_y-jy)=", mry.first, mry.second);
 
 /*
       do k=1,km+1
@@ -904,7 +901,7 @@ c===================================== rotB-j
 */
 
     const auto mrz = computeMaxRotDiff(2, by, bx, jz, rhx, rhy);
-    outputMaxI("max(rotB_j-jz)= ", mrz.first, mrz.second);
+    outputMaxI("max(rotB_z-jz)=", mrz.first, mrz.second);
 
     auto te = std::chrono::steady_clock::now();
     auto work_time = std::chrono::duration<double>(te - ts).count();

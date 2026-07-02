@@ -9,8 +9,7 @@
 
       real*8 qj,pi,c1,xm,ym,zm,x0,y0,hx,hy,hz,r0,h0,eps,
      =x,y,z,x1,y1,z1,x2,y2,z2,s2,s4,s6,s,c2,s1,s3,r,c12,c13,c21,c23,
-     =sx,sy,sz
-
+     =sx,sy,sz,rhx,rhy,rhz,rhx2,rhy2,rhz2
 
       common/j/jx,jy,jz
 
@@ -31,6 +30,12 @@ c      km=20
       hx=xm/im
       hy=ym/lm
       hz=zm/km
+      rhx=1.d0/hx
+      rhy=1.d0/hy
+      rhz=1.d0/hz
+      rhx2=rhx*rhx
+      rhy2=rhy*rhy
+      rhz2=rhz*rhz
       
       r0=1.d0
       h0=zm/(2.d0*pi)
@@ -40,7 +45,7 @@ c      km=20
 
       print*,'1. im,lm,km,nm=',im,lm,km,nm
       write(25,100) im,lm,km,nm
-  100 format('1. im,lm,km,nm=',4i6)
+  100 format('1. im,lm,km,nm=',4i10)
       write(25,102) hx,hy,hz
   102 format('1. hx,hy,hz=',3f10.3)
 
@@ -176,9 +181,9 @@ c  ax
       do k=2,km+1
          do l=2,lm+1
             do i=2,im
-               s=((ax(i+1,l,k)+ax(i-1,l,k))/hx**2+
-     =            (ax(i,l+1,k)+ax(i,l-1,k))/hy**2+
-     =            (ax(i,l,k+1)+ax(i,l,k-1))/hz**2+jx(i,l,k))/c2
+               s=((ax(i+1,l,k)+ax(i-1,l,k))*rhx2+
+     =            (ax(i,l+1,k)+ax(i,l-1,k))*rhy2+
+     =            (ax(i,l,k+1)+ax(i,l,k-1))*rhz2+jx(i,l,k))/c2
                s2=dabs(ax(i,l,k)-s)
                if(s2.gt.sx) sx=s2
                ax(i,l,k)=s
@@ -215,9 +220,9 @@ c  ay
       do k=2,km+1
          do l=2,lm
             do i=2,im+1
-               s=((ay(i+1,l,k)+ay(i-1,l,k))/hx**2+
-     =            (ay(i,l+1,k)+ay(i,l-1,k))/hy**2+
-     =            (ay(i,l,k+1)+ay(i,l,k-1))/hz**2+jy(i,l,k))/c2
+               s=((ay(i+1,l,k)+ay(i-1,l,k))*rhx2+
+     =            (ay(i,l+1,k)+ay(i,l-1,k))*rhy2+
+     =            (ay(i,l,k+1)+ay(i,l,k-1))*rhz2+jy(i,l,k))/c2
                s2=dabs(ay(i,l,k)-s)
                if(s2.gt.sy) sy=s2
                ay(i,l,k)=s
@@ -254,16 +259,16 @@ c  az
       do l=2,lm+1
          do i=2,im+1
             do k=2,km
-               s=((az(i+1,l,k)+az(i-1,l,k))/hx**2+
-     =            (az(i,l+1,k)+az(i,l-1,k))/hy**2+
-     =            (az(i,l,k+1)+az(i,l,k-1))/hz**2+jz(i,l,k))/c2
+               s=((az(i+1,l,k)+az(i-1,l,k))*rhx2+
+     =            (az(i,l+1,k)+az(i,l-1,k))*rhy2+
+     =            (az(i,l,k+1)+az(i,l,k-1))*rhz2+jz(i,l,k))/c2
                s2=dabs(az(i,l,k)-s)
                if(s2.gt.sz) sz=s2
                az(i,l,k)=s
             enddo
-            s=((az(i+1,l,km+1)+az(i-1,l,km+1))/hx**2+
-     =         (az(i,l+1,km+1)+az(i,l-1,km+1))/hy**2+
-     =         (az(i,l,2)+az(i,l,km))/hz**2+jz(i,l,km+1))/c2
+            s=((az(i+1,l,km+1)+az(i-1,l,km+1))*rhx2+
+     =         (az(i,l+1,km+1)+az(i,l-1,km+1))*rhy2+
+     =         (az(i,l,2)+az(i,l,km))*rhz2+jz(i,l,km+1))/c2
             s2=dabs(az(i,l,km+1)-s)
             if(s2.gt.sz) sz=s2
             az(i,l,km+1)=s
@@ -280,7 +285,7 @@ c  az
 
 c      write(25,*) 'ax. n,sx=',n,sx
       print 104,n,sx,sy,sz
-  104 format('n,sx,sy,sz=',i6,3es12.4)
+  104 format('n,sx,sy,sz=',i10,3es12.4)
 
       if((sx.gt.eps).or.(sy.gt.eps).or.(sz.gt.eps)) goto 8
 c      if(n.lt.200) goto 8
@@ -291,8 +296,8 @@ c========================= bx, by, bz ============
       do k=1,km+1
          do l=1,lm+1
             do i=1,im+2
-               bx(i,l,k)=(az(i,l+1,k)-az(i,l,k))/hy-
-     =                   (ay(i,l,k+1)-ay(i,l,k))/hz
+               bx(i,l,k)=(az(i,l+1,k)-az(i,l,k))*rhy-
+     =                   (ay(i,l,k+1)-ay(i,l,k))*rhz
             enddo
          enddo
       enddo
@@ -300,8 +305,8 @@ c========================= bx, by, bz ============
       do k=1,km+1
          do l=1,lm+2
             do i=1,im+1
-               by(i,l,k)=(ax(i,l,k+1)-ax(i,l,k))/hz-
-     =                   (az(i+1,l,k)-az(i,l,k))/hx
+               by(i,l,k)=(ax(i,l,k+1)-ax(i,l,k))*rhz-
+     =                   (az(i+1,l,k)-az(i,l,k))*rhx
             enddo
          enddo
       enddo
@@ -309,8 +314,8 @@ c========================= bx, by, bz ============
       do k=1,km+2
          do l=1,lm+1
             do i=1,im+1
-               bz(i,l,k)=(ay(i+1,l,k)-ay(i,l,k))/hx-
-     =                   (ax(i,l+1,k)-ax(i,l,k))/hy
+               bz(i,l,k)=(ay(i+1,l,k)-ay(i,l,k))*rhx-
+     =                   (ax(i,l+1,k)-ax(i,l,k))*rhy
             enddo
          enddo
       enddo
@@ -320,9 +325,9 @@ c===================================== divj
       do k=2,km+1
          do l=2,lm+1
             do i=2,im+1
-               s1=(jx(i,l,k)-jx(i-1,l,k))/hx+
-     =            (jy(i,l,k)-jy(i,l-1,k))/hy+
-     =            (jz(i,l,k)-jz(i,l,k-1))/hz
+               s1=(jx(i,l,k)-jx(i-1,l,k))*rhx+
+     =            (jy(i,l,k)-jy(i,l-1,k))*rhy+
+     =            (jz(i,l,k)-jz(i,l,k-1))*rhz
                if(dabs(s1).gt.s) s=s1
             enddo
          enddo
@@ -334,9 +339,9 @@ c===================================== divB
       do k=1,km+1
          do l=1,lm+1
             do i=1,im+1
-               s1=(bx(i+1,l,k)-bx(i,l,k))/hx+
-     =            (by(i,l+1,k)-by(i,l,k))/hy+
-     =            (bz(i,l,k+1)-bz(i,l,k))/hz
+               s1=(bx(i+1,l,k)-bx(i,l,k))*rhx+
+     =            (by(i,l+1,k)-by(i,l,k))*rhy+
+     =            (bz(i,l,k+1)-bz(i,l,k))*rhz
                if(dabs(s1).gt.s) s=s1
             enddo
          enddo
@@ -348,9 +353,9 @@ c===================================== divA
       do k=2,km+1
          do l=2,lm+1
             do i=2,im+1
-               s2=(ax(i,l,k)-ax(i-1,l,k))/hx+
-     =            (ay(i,l,k)-ay(i,l-1,k))/hy+
-     =            (az(i,l,k)-az(i,l,k-1))/hz
+               s2=(ax(i,l,k)-ax(i-1,l,k))*rhx+
+     =            (ay(i,l,k)-ay(i,l-1,k))*rhy+
+     =            (az(i,l,k)-az(i,l,k-1))*rhz
                s=dabs(s2)
                if(s.gt.s1) then
                   s1=s
@@ -362,7 +367,7 @@ c===================================== divA
          enddo
       enddo
       write(25,202) s1,i1,l1,k1
-  202 format('max(divA)=',es12.4,3i4)
+  202 format('max(divA)=',es12.4,3i10)
 
 c===================================== rotB-j
       s1=0.d0
@@ -372,8 +377,8 @@ c===================================== rotB-j
       do k=2,km+1
          do l=2,lm+1
             do i=1,im+1
-               s4=(bz(i,l,k)-bz(i,l-1,k))/hy-
-     =            (by(i,l,k)-by(i,l,k-1))/hz-jx(i,l,k)
+               s4=(bz(i,l,k)-bz(i,l-1,k))*rhy-
+     =            (by(i,l,k)-by(i,l,k-1))*rhz-jx(i,l,k)
                s=dabs(s4)
                if(s.gt.s1) then
                   s1=s4
@@ -385,13 +390,13 @@ c===================================== rotB-j
          enddo
       enddo
       write(25,105) s1,i1,l1,k1
-  105 format('max(rotB_x-jx)=',es12.4,3i4)
+  105 format('max(rotB_x-jx)=',es12.4,3i10)
 
       do k=2,km+1
          do l=1,lm+1
             do i=2,im+1
-               s4=(bx(i,l,k)-bx(i,l,k-1))/hz-
-     =            (bz(i,l,k)-bz(i-1,l,k))/hx-jy(i,l,k)
+               s4=(bx(i,l,k)-bx(i,l,k-1))*rhz-
+     =            (bz(i,l,k)-bz(i-1,l,k))*rhx-jy(i,l,k)
                if(dabs(s4).gt.s2) then
                   s2=s4
                   i1=i
@@ -402,13 +407,13 @@ c===================================== rotB-j
          enddo
       enddo
       write(25,106) s2,i1,l1,k1
-  106 format('max(rotB_y-jy)=',es12.4,3i4)
+  106 format('max(rotB_y-jy)=',es12.4,3i10)
 
       do k=1,km+1
          do l=2,lm+1
             do i=2,im+1
-               s4=(by(i,l,k)-by(i-1,l,k))/hx-
-     =            (bx(i,l,k)-bx(i,l-1,k))/hy-jz(i,l,k)
+               s4=(by(i,l,k)-by(i-1,l,k))*rhx-
+     =            (bx(i,l,k)-bx(i,l-1,k))*rhy-jz(i,l,k)
                if(dabs(s4).gt.s3) then 
                   s3=s4
                   i1=i
@@ -419,7 +424,7 @@ c===================================== rotB-j
          enddo
       enddo
       write(25,107) s3,i1,l1,k1
-  107 format('max(rotB_z-jz)=',es12.4,3i4)
+  107 format('max(rotB_z-jz)=',es12.4,3i10)
 
 c===================================== write
 
