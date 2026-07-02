@@ -1,6 +1,8 @@
 #include "common.h"
 #include "output.h"
 
+#include <omp.h>
+
 #include <vector>
 #include <array>
 #include <iostream>
@@ -15,10 +17,7 @@
 using namespace std;
 
 int main(int argc, char **argv) {
-/*
-    program simit44
-*/
-
+    const int NTHREADS_DEF = 1;
     const int IM_DEF = 40;
     const int LM_DEF = 40;
     const int KM_DEF = 20;
@@ -30,6 +29,7 @@ int main(int argc, char **argv) {
         const auto s = string(argv[1]);
         if (s == "-h" || s == "--help") {
             std::cout << argv[0] <<
+                " [nthreads=" << NTHREADS_DEF << "]" <<
                 " [im=" << IM_DEF << "]" <<
                 " [lm=" << LM_DEF << "]" <<
                 " [km=" << KM_DEF << "]" <<
@@ -41,22 +41,23 @@ int main(int argc, char **argv) {
         }
     }
 
-    const int im = (argc > 1) ? stoi(argv[1]) : IM_DEF;
-    const int lm = (argc > 2) ? stoi(argv[2]) : LM_DEF;
-    const int km = (argc > 3) ? stoi(argv[3]) : KM_DEF;
-    const int nm = (argc > 4) ? stoi(argv[4]) : NM_DEF;
-    const bool file_output = (argc > 5) ? stoi(argv[5]) : FOUT_DEF;
-    const bool screen_output = (argc > 6) ? stoi(argv[6]) : SOUT_DEF;
+    auto intArg = [&argc,&argv](int index, int dft) {
+        return (argc > index) ? stoi(argv[index]) : dft;
+    };
+
+    const int num_of_threads = intArg(1, NTHREADS_DEF);
+    const int im = intArg(2, IM_DEF);
+    const int lm = intArg(3, LM_DEF);
+    const int km = intArg(4, KM_DEF);
+    const int nm = intArg(5, NM_DEF);
+    const bool file_output = intArg(6, FOUT_DEF);
+    const bool screen_output = intArg(7, SOUT_DEF);
+
+    omp_set_num_threads(num_of_threads);
 
     const size_t ims = im + 2;
     const size_t lms = lm + 2;
     const size_t kms = km + 2;
-
-/*
-    real*8 jx(im+2,lm+2,km+2),jy(im+2,lm+2,km+2),jz(im+2,lm+2,km+2),
-    ax(im+2,lm+2,km+2),ay(im+2,lm+2,km+2),az(im+2,lm+2,km+2),
-    bx(im+2,lm+2,km+2),by(im+2,lm+2,km+2),bz(im+2,lm+2,km+2)
-*/
 
     DArray3 jx(ims, lms, kms), jy(ims, lms, kms), jz(ims, lms, kms);
     DArray3 ax(ims, lms, kms), ay(ims, lms, kms), az(ims, lms, kms);
@@ -88,45 +89,6 @@ int main(int argc, char **argv) {
         out_lst << "1. hx,hy,hz=" << formatF(hx) << formatF(hy) << formatF(hz) << std::endl;
     }
 
-/*
-c==============================================================
-      subroutine pqr(i,l,k,h1,h2,h3,x,y,z,x1,y1,z1,a)
-      parameter(im=40,lm=40,km=20)
-      real*8 p(im+2,lm+2,km+2),q(im+2,lm+2,km+2),r(im+2,lm+2,km+2)
-      integer i,l,k
-      real*8 h1,h2,h3,x,y,z,x1,y1,z1,a,
-     *dx,dy,dz,dx1,dy1,dz1,su,sv,sw,s1,s2,s3
-      common/j/p,q,r
-      dx=0.5*(x+x1)-h1*(i-1.5)
-      dy=0.5*(y+y1)-h2*(l-1.5)
-      dz=0.5*(z+z1)-h3*(k-1.5)
-      dx1=h1-dx
-      dy1=h2-dy
-      dz1=h3-dz
-      su=x1-x
-      sv=y1-y
-      sw=z1-z
-      s1=sv*sw/12.
-      s2=su*sw/12.
-      s3=su*sv/12.
-      su=su*a/(h2*h3)   !
-      sv=sv*a/(h1*h3)   !
-      sw=sw*a/(h1*h2)   !
-      p(i,l,k)=p(i,l,k)+su*(dy1*dz1+s1)
-      p(i,l,k+1)=p(i,l,k+1)+su*(dy1*dz-s1)
-      p(i,l+1,k)=p(i,l+1,k)+su*(dy*dz1-s1)
-      p(i,l+1,k+1)=p(i,l+1,k+1)+su*(dy*dz+s1)
-      q(i,l,k)=q(i,l,k)+sv*(dx1*dz1+s2)
-      q(i,l,k+1)=q(i,l,k+1)+sv*(dx1*dz-s2)
-      q(i+1,l,k)=q(i+1,l,k)+sv*(dx*dz1-s2)
-      q(i+1,l,k+1)=q(i+1,l,k+1)+sv*(dx*dz+s2)
-      r(i,l,k)=r(i,l,k)+sw*(dx1*dy1+s3)
-      r(i,l+1,k)=r(i,l+1,k)+sw*(dx1*dy-s3)
-      r(i+1,l,k)=r(i+1,l,k)+sw*(dx*dy1-s3)
-      r(i+1,l+1,k)=r(i+1,l+1,k)+sw*(dx*dy+s3)
-      return
-      end
-*/
     auto pqr = [hx, hy, hz, qj](DArray3 &p, DArray3 &q, DArray3 &r, int i, int l, int k, double x, double y, double z, double x1, double y1, double z1) {
         double dx = 0.5 * (x + x1) - hx * (i - 1.5);
         double dy = 0.5 * (y + y1) - hy * (l - 1.5);
@@ -162,89 +124,6 @@ c==============================================================
     };
 
     auto ts = std::chrono::steady_clock::now();
-
-/*
-c zadanie vintovogo toka
-
-      do k=1,km+2
-         do l=1,lm+2
-            do i=1,im+2
-               jx(i,l,k)=0.d0
-               jy(i,l,k)=0.d0
-               jz(i,l,k)=0.d0
-            enddo
-         enddo
-      enddo
-
-      x=x0+r0
-      y=y0
-      z=0.d0
-      do 111 n=1,nm
-      x1=x0+r0*dcos(c1*n)
-      y1=y0+r0*dsin(c1*n)
-      z1=h0*c1*n
-      s2=x/hx
-      i1=idint(s2+1.5)
-      s4=y/hy
-      l1=idint(s4+1.5)
-      s6=z/hz
-      k1=idint(s6+1.5)
-      s2=x1/hx
-      i2=idint(s2+1.5)
-      s4=y1/hy
-      l2=idint(s4+1.5)
-      s6=z1/hz
-      k2=idint(s6+1.5)
-      i=abs(i2-i1)
-      l=abs(l2-l1)
-      k=abs(k2-k1)
-      m=4*i+2*l+k
-      goto(1,2,3,4,5,6,7),m
-      call pqr(i1,l1,k1,hx,hy,hz,x,y,z,x1,y1,z1,qj)
-      goto 18
-    1 z2=hz*(0.5*(k1+k2)-1.)
-      s=(z2-z)/(z1-z)
-      x2=x+(x1-x)*s
-      y2=y+(y1-y)*s
-      goto 11
-    2 y2=hy*(0.5*(l1+l2)-1.)
-      s=(y2-y)/(y1-y)
-      x2=x+(x1-x)*s
-      z2=z+(z1-z)*s
-      goto 11
-    3 y2=hy*(0.5*(l1+l2)-1.)
-      z2=hz*(0.5*(k1+k2)-1.)
-      s=((z1-z)*(z2-z)+(y1-y)*(y2-y))/((z1-z)**2+(y1-y)**2)
-      x2=x+(x1-x)*s
-      goto 11
-    4 x2=hx*(0.5*(i1+i2)-1.)
-      s=(x2-x)/(x1-x)
-      y2=y+(y1-y)*s
-      z2=z+(z1-z)*s
-      goto 11
-    5 x2=hx*(0.5*(i1+i2)-1.)
-      z2=hz*(0.5*(k1+k2)-1.)
-      s=((z1-z)*(z2-z)+(x1-x)*(x2-x))/((z1-z)**2+(x1-x)**2)
-      y2=y+(y1-y)*s
-      goto 11
-    6 x2=hx*(0.5*(i1+i2)-1.)
-      y2=hy*(0.5*(l1+l2)-1.)
-      s=((y1-y)*(y2-y)+(x1-x)*(x2-x))/((y1-y)**2+(x1-x)**2)
-      z2=z+(z1-z)*s
-      goto 11
-    7 x2=hx*(0.5*(i1+i2)-1.)
-      y2=hy*(0.5*(l1+l2)-1.)
-      z2=hz*(0.5*(k1+k2)-1.)
-   11 call pqr(i1,l1,k1,hx,hy,hz,x,y,z,x2,y2,z2,qj)
-      call pqr(i2,l2,k2,hx,hy,hz,x2,y2,z2,x1,y1,z1,qj)
-   18 continue
-
-      x=x1
-      y=y1
-      z=z1
-
-  111 continue
-*/
 
     double x = x0 + r0;
     double y = y0;
@@ -319,31 +198,6 @@ c zadanie vintovogo toka
         z = z1;
     }
 
-/*
-c   vychislenie vektornogo potentsiala
-
-      eps=1.d-10
-      c2=2.d0/hx**2+2.d0/hy**2+2.d0/hz**2
-      c12=hx/hy
-      c13=hx/hz
-      c21=hy/hx
-      c23=hy/hz
-
-      do k=1,km+2
-         do l=1,lm+2
-            do i=1,im+2
-               ax(i,l,k)=0.d0
-               ay(i,l,k)=0.d0
-               az(i,l,k)=0.d0
-            enddo
-         enddo
-      enddo
-
-      n=0
-
-    8 n=n+1
-*/
-
     const double hx2 = hx * hx;
     const double hy2 = hy * hy;
     const double hz2 = hz * hz;
@@ -359,6 +213,7 @@ c   vychislenie vektornogo potentsiala
     const double c23 = hy / hz;
 
     auto copySliceX = [](DArray3 &arr, int dst, int src, int lend, int kend) {
+        #pragma omp parallel for collapse(2)
         for (int l = 0; l < lend; l++) {
             for (int k = 0; k < kend; k++) {
                 arr(dst, l, k) = arr(src, l, k);
@@ -367,6 +222,7 @@ c   vychislenie vektornogo potentsiala
     };
 
     auto copySliceY = [](DArray3 &arr, int dst, int src, int iend, int kend) {
+        #pragma omp parallel for collapse(2)
         for (int i = 0; i < iend; i++) {
             for (int k = 0; k < kend; k++) {
                 arr(i, dst, k) = arr(i, src, k);
@@ -375,6 +231,7 @@ c   vychislenie vektornogo potentsiala
     };
 
     auto copySliceZ = [](DArray3 &arr, int dst, int src, int iend, int lend) {
+        #pragma omp parallel for collapse(2)
         for (int i = 0; i < iend; i++) {
             for (int l = 0; l < lend; l++) {
                 arr(i, l, dst) = arr(i, l, src);
@@ -383,6 +240,7 @@ c   vychislenie vektornogo potentsiala
     };
 
     auto addSliceZ = [](DArray3 &arr, int dst, int src, int iend, int lend) {
+        #pragma omp parallel for collapse(2)
         for (int i = 0; i < iend; i++) {
             for (int l = 0; l < lend; l++) {
                 arr(i, l, dst) += arr(i, l, src);
@@ -390,7 +248,8 @@ c   vychislenie vektornogo potentsiala
         }
     };
 
-    auto computeBoundaryX = [im, lm, km](DArray3 &ax, DArray3 &ay, DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
+    auto computeBoundaryX = [im, lm, km](DArray3 &ax, const DArray3 &ay, const DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
+        #pragma omp parallel for collapse(2)
         for (int l = 1; l < lm + 1; l++) {
             for (int k = 1; k < km + 1; k++) {
                 ax(dst, l, k) = ax(src1, l, k) +
@@ -400,7 +259,8 @@ c   vychislenie vektornogo potentsiala
         }
     };
 
-    auto computeBoundaryY = [im, lm, km](DArray3 &ax, DArray3 &ay, DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
+    auto computeBoundaryY = [im, lm, km](const DArray3 &ax, DArray3 &ay, const DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
+        #pragma omp parallel for collapse(2)
         for (int i = 1; i < im + 1; i++) {
             for (int k = 1; k < km + 1; k++) {
                 ay(i, dst, k) = ay(i, src1, k) +
@@ -412,6 +272,7 @@ c   vychislenie vektornogo potentsiala
 
     auto computeStep = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
+        //#pragma omp parallel for collapse(3) reduction(max: maxdiff)
         for (int k = 1; k < kend; k++) {
             for (int l = 1; l < lend; l++) {
                 for (int i = 1; i < iend; i++) {
@@ -428,6 +289,7 @@ c   vychislenie vektornogo potentsiala
 
     auto computeStepZ = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
+        //#pragma omp parallel for collapse(3) reduction(max: maxdiff)
         for (int l = 1; l < lend; l++) {
             for (int i = 1; i < iend; i++) {
                 for (int k = 1; k < kend; k++) {
@@ -448,25 +310,6 @@ c   vychislenie vektornogo potentsiala
         return maxdiff;
     };
 
-/*
-      do l=1,lm+2
-         do i=1,im+2
-            jx(i,l,2)=jx(i,l,2)+jx(i,l,km+2)
-            jx(i,l,km+1)=jx(i,l,km+1)+jx(i,l,1)
-            jx(i,l,1)=jx(i,l,km+1)
-            jx(i,l,km+2)=jx(i,l,2)
-
-            jy(i,l,2)=jy(i,l,2)+jy(i,l,km+2)
-            jy(i,l,km+1)=jy(i,l,km+1)+jy(i,l,1)
-            jy(i,l,1)=jy(i,l,km+1)
-            jy(i,l,km+2)=jy(i,l,2)
-
-            jz(i,l,km+1)=jz(i,l,km+1)+jz(i,l,1)
-            jz(i,l,1)=jz(i,l,km+1)
-         enddo
-      enddo
-*/
-
     addSliceZ(jx, 1, km + 1, im + 2, lm + 2);
     addSliceZ(jx, km, 0, im + 2, lm + 2);
     copySliceZ(jx, 0, km, im + 2, lm + 2);
@@ -485,146 +328,31 @@ c   vychislenie vektornogo potentsiala
 
     do {
         n++;
-/*
-c  ax
-      sx=0.d0
-      do k=2,km+1
-         do l=2,lm+1
-            do i=2,im
-               s=((ax(i+1,l,k)+ax(i-1,l,k))/hx**2+
-     =            (ax(i,l+1,k)+ax(i,l-1,k))/hy**2+
-     =            (ax(i,l,k+1)+ax(i,l,k-1))/hz**2+jx(i,l,k))/c2
-               s2=dabs(ax(i,l,k)-s)
-               if(s2.gt.sx) sx=s2
-               ax(i,l,k)=s
-            enddo
-         enddo
-      enddo
-*/
+
         sx = computeStep(ax, jx, im, lm + 1, km + 1);
 
-
-/*
-      do k=2,km+1
-         do l=2,lm+1
-            ax(1,l,k)=ax(2,l,k)+c12*(ay(2,l,k)-ay(2,l-1,k))+
-     =               c13*(az(2,l,k)-az(2,l,k-1))
-            ax(im+1,l,k)=ax(im,l,k)-c12*(ay(im+1,l,k)-ay(im+1,l-1,k))-
-     =               c13*(az(im+1,l,k)-az(im+1,l,k-1))
-         enddo
-      enddo
-*/
         computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13);
         computeBoundaryX(ax, ay, az, im, im - 1, im, -c12, -c13);
 
-/*
-      do l=1,lm+2
-         do i=1,im+1
-            ax(i,l,1)=ax(i,l,km+1)
-            ax(i,l,km+2)=ax(i,l,2)
-         enddo
-      enddo
-*/
         copySliceZ(ax, 0, km, im + 1, lm + 2);
         copySliceZ(ax, km + 1, 1, im + 1, lm + 2);
 
-/*
-      do k=1,km+2
-         do i=1,im+1
-            ax(i,1,k)=ax(i,2,k)             ! ?
-            ax(i,lm+2,k)=ax(i,lm+1,k)       ! ?
-         enddo
-      enddo
-*/
         copySliceY(ax, 0, 1, im + 1, km + 2);
         copySliceY(ax, lm + 1, lm, im + 1, km + 2);
 
-/*
-c  ay
-      sy=0.d0
-      do k=2,km+1
-         do l=2,lm
-            do i=2,im+1
-               s=((ay(i+1,l,k)+ay(i-1,l,k))/hx**2+
-     =            (ay(i,l+1,k)+ay(i,l-1,k))/hy**2+
-     =            (ay(i,l,k+1)+ay(i,l,k-1))/hz**2+jy(i,l,k))/c2
-               s2=dabs(ay(i,l,k)-s)
-               if(s2.gt.sy) sy=s2
-               ay(i,l,k)=s
-            enddo
-         enddo
-      enddo
-*/
         sy = computeStep(ay, jy, im + 1, lm, km + 1);
 
-/*
-      do k=2,km+1
-         do i=2,im+1
-            ay(i,1,k)=ay(i,2,k)+c21*(ax(i,2,k)-ax(i-1,2,k))+
-     =          c23*(az(i,2,k)-az(i,2,k-1))
-            ay(i,lm+1,k)=ay(i,lm,k)-c21*(ax(i,lm+1,k)-ax(i-1,lm+1,k))-
-     =          c23*(az(i,lm+1,k)-az(i,lm+1,k-1))
-         enddo
-      enddo
-*/
         computeBoundaryY(ax, ay, az, 0, 1, 1, c21, c23);
         computeBoundaryY(ax, ay, az, lm, lm - 1, lm, -c21, -c23);
 
-/*
-      do l=1,lm+1
-         do i=1,im+2
-            ay(i,l,1)=ay(i,l,km+1)
-            ay(i,l,km+2)=ay(i,l,2)
-         enddo
-      enddo
-*/
         copySliceZ(ay, 0, km, im + 1, lm + 1);
         copySliceZ(ay, km + 1, 1, im + 1, lm + 1);
 
-/*
-      do k=1,km+2
-         do l=1,lm+1
-            ay(1,l,k)=ay(2,l,k)        ! ?
-            ay(im+2,l,k)=ay(im+1,l,k)  ! ?
-         enddo
-      enddo
-*/
         copySliceX(ay, 0, 1, lm + 1, km + 2);
         copySliceX(ay, im + 1, im, lm + 1, km + 2);
 
-/*
-c  az
-      sz=0.d0
-      do l=2,lm+1
-         do i=2,im+1
-            do k=2,km
-               s=((az(i+1,l,k)+az(i-1,l,k))/hx**2+
-     =            (az(i,l+1,k)+az(i,l-1,k))/hy**2+
-     =            (az(i,l,k+1)+az(i,l,k-1))/hz**2+jz(i,l,k))/c2
-               s2=dabs(az(i,l,k)-s)
-               if(s2.gt.sz) sz=s2
-               az(i,l,k)=s
-            enddo
-            s=((az(i+1,l,km+1)+az(i-1,l,km+1))/hx**2+
-     =         (az(i,l+1,km+1)+az(i,l-1,km+1))/hy**2+
-     =         (az(i,l,2)+az(i,l,km))/hz**2+jz(i,l,km+1))/c2
-            s2=dabs(az(i,l,km+1)-s)
-            if(s2.gt.sz) sz=s2
-            az(i,l,km+1)=s
-            az(i,l,1)=s
-         enddo
-      enddo
-*/
         sz = computeStepZ(az, jz, im + 1, lm + 1, km);
 
-/*
-      do l=1,lm+2
-         do i=1,im+2
-            az(i,l,1)=az(i,l,km+1)
-            az(i,l,km+2)=az(i,l,2)
-         enddo
-      enddo
-*/
         copySliceZ(az, 0, km, im + 2, lm + 2);
         copySliceZ(az, km+1, 1, im + 2, lm + 2);
 
@@ -637,19 +365,6 @@ c  az
         out_lst << "n,sx,sy,sz=" << formatI(n) << formatS(sx) << formatS(sy) << formatS(sz) << std::endl;
     }
 
-/*
-c========================= bx, by, bz ============
-
-      do k=1,km+1
-         do l=1,lm+1
-            do i=1,im+2
-               bx(i,l,k)=(az(i,l+1,k)-az(i,l,k))/hy-
-     =                   (ay(i,l,k+1)-ay(i,l,k))/hz
-            enddo
-         enddo
-      enddo
-*/
-
     auto computeB = [im, lm, km](int dim, const DArray3 &a1, const DArray3 &a2, DArray3 &b, double rh1, double rh2) {
         const static Index3 i_end {2, 1, 1};
         const static Index3 l_end {1, 2, 1};
@@ -659,6 +374,7 @@ c========================= bx, by, bz ============
 
         const auto &s1 = shift1[dim];
         const auto &s2 = shift2[dim];
+        #pragma omp parallel for collapse(3)
         for (int k = 0; k < km + k_end[dim]; k++) {
             for (int l = 0; l < lm + l_end[dim]; l++) {
                 for (int i = 0; i < im + i_end[dim]; i++) {
@@ -670,31 +386,7 @@ c========================= bx, by, bz ============
     };
 
     computeB(0, az, ay, bx, rhy, rhz);
-
-/*
-      do k=1,km+1
-         do l=1,lm+2
-            do i=1,im+1
-               by(i,l,k)=(ax(i,l,k+1)-ax(i,l,k))/hz-
-     =                   (az(i+1,l,k)-az(i,l,k))/hx
-            enddo
-         enddo
-      enddo
-*/
-
     computeB(1, ax, az, by, rhz, rhx);
-
-/*
-      do k=1,km+2
-         do l=1,lm+1
-            do i=1,im+1
-               bz(i,l,k)=(ay(i+1,l,k)-ay(i,l,k))/hx-
-     =                   (ax(i,l+1,k)-ax(i,l,k))/hy
-            enddo
-         enddo
-      enddo
-*/
-
     computeB(2, ay, ax, bz, rhx, rhy);
 
     auto outputMax = [&file_output, &out_lst](const std::string &str, double m) {
@@ -709,21 +401,8 @@ c========================= bx, by, bz ============
         }
     };
 
-/*
-c===================================== divj
-      s=0.d0
-      do k=2,km+1
-         do l=2,lm+1
-            do i=2,im+1
-               s1=(jx(i,l,k)-jx(i-1,l,k))/hx+
-     =            (jy(i,l,k)-jy(i,l-1,k))/hy+
-     =            (jz(i,l,k)-jz(i,l,k-1))/hz
-               if(dabs(s1).gt.s) s=s1
-            enddo
-         enddo
-      enddo
-*/
     double maxval = 0.0;
+    #pragma omp parallel for collapse(3) reduction(max: maxval)
     for (int k = 1; k < km + 1; k++) {
         for (int l = 1; l < lm + 1; l++) {
             for (int i = 1; i < im + 1; i++) {
@@ -739,21 +418,8 @@ c===================================== divj
 
     outputMax("max(divj)=", maxval);
 
-/*
-c===================================== divB
-      s=0.d0
-      do k=1,km+1
-         do l=1,lm+1
-            do i=1,im+1
-               s1=(bx(i+1,l,k)-bx(i,l,k))/hx+
-     =            (by(i,l+1,k)-by(i,l,k))/hy+
-     =            (bz(i,l,k+1)-bz(i,l,k))/hz
-               if(dabs(s1).gt.s) s=s1
-            enddo
-         enddo
-      enddo
-*/
     maxval = 0.0;
+    #pragma omp parallel for collapse(3) reduction(max: maxval)
     for (int k = 0; k < km + 1; k++) {
         for (int l = 0; l < lm + 1; l++) {
             for (int i = 0; i < im + 1; i++) {
@@ -768,66 +434,37 @@ c===================================== divB
     }
 
     outputMax("max(divB)=", maxval);
-/*
-c===================================== divA
-      s1=0.d0
-      do k=2,km+1
-         do l=2,lm+1
-            do i=2,im+1
-               s2=(ax(i,l,k)-ax(i-1,l,k))/hx+
-     =            (ay(i,l,k)-ay(i,l-1,k))/hy+
-     =            (az(i,l,k)-az(i,l,k-1))/hz
-               s=dabs(s2)
-               if(s.gt.s1) then
-                  s1=s
-                  i1=i
-                  l1=l
-                  k1=k
-               endif
-            enddo
-         enddo
-      enddo
-*/
+
     maxval = 0.0;
     Index3 maxind {0, 0, 0};
-    for (int k = 1; k < km + 1; k++) {
-        for (int l = 1; l < lm + 1; l++) {
-            for (int i = 1; i < im + 1; i++) {
-                const double s = (ax(i,l,k) - ax(i-1,l,k)) * rhx +
-                                 (ay(i,l,k) - ay(i,l-1,k)) * rhy +
-                                 (az(i,l,k) - az(i,l,k-1)) * rhz;
-                if (std::abs(s) > maxval) {
-                    maxval = std::abs(s);
-                    maxind = {i, l, k};
+    #pragma omp parallel
+    {
+        double maxval_l = 0.0;
+        Index3 maxind_l {0, 0, 0};
+        #pragma omp for collapse(3)
+        for (int k = 1; k < km + 1; k++) {
+            for (int l = 1; l < lm + 1; l++) {
+                for (int i = 1; i < im + 1; i++) {
+                    const double s = (ax(i,l,k) - ax(i-1,l,k)) * rhx +
+                                     (ay(i,l,k) - ay(i,l-1,k)) * rhy +
+                                     (az(i,l,k) - az(i,l,k-1)) * rhz;
+                    if (std::abs(s) > maxval_l) {
+                        maxval_l = std::abs(s);
+                        maxind_l = {i, l, k};
+                    }
                 }
+            }
+        }
+        #pragma omp critical
+        {
+            if (maxval_l > maxval) {
+                maxval = maxval_l;
+                maxind = maxind_l;
             }
         }
     }
 
     outputMaxI("max(divA)=", maxval, maxind);
-
-/*
-c===================================== rotB-j
-      s1=0.d0
-      s2=0.d0
-      s3=0.d0
-
-      do k=2,km+1
-         do l=2,lm+1
-            do i=1,im+1
-               s4=(bz(i,l,k)-bz(i,l-1,k))/hy-
-     =            (by(i,l,k)-by(i,l,k-1))/hz-jx(i,l,k)
-               s=dabs(s4)
-               if(s.gt.s1) then
-                  s1=s4
-                  i1=i
-                  l1=l
-                  k1=k
-               endif
-            enddo
-         enddo
-      enddo
-*/
 
     auto computeMaxRotDiff = [im, lm, km](int dim, const DArray3 &b1, const DArray3 &b2, const DArray3 &j, double rh1, double rh2) ->
     std::pair<double, Index3> {
@@ -841,15 +478,28 @@ c===================================== rotB-j
         Index3 maxind {0, 0, 0};
         const auto &s1 = shift1[dim];
         const auto &s2 = shift2[dim];
-        for (int k = k_start[dim]; k < km + 1; k++) {
-            for (int l = l_start[dim]; l < lm + 1; l++) {
-                for (int i = i_start[dim]; i < im + 1; i++) {
-                    const double s = (b1(i,l,k) - b1(i+s1[0],l+s1[1],k+s1[2])) * rh1 -
-                                     (b2(i,l,k) - b2(i+s2[0],l+s2[1],k+s2[2])) * rh2 - j(i,l,k);
-                    if (std::abs(s) > maxval) {
-                        maxval = s;
-                        maxind = Index3 {i, l, k};
+        #pragma omp parallel
+        {
+            double maxval_l = 0.0;
+            Index3 maxind_l {0, 0, 0};
+            #pragma omp for collapse(3)
+            for (int k = k_start[dim]; k < km + 1; k++) {
+                for (int l = l_start[dim]; l < lm + 1; l++) {
+                    for (int i = i_start[dim]; i < im + 1; i++) {
+                        const double s = (b1(i,l,k) - b1(i+s1[0],l+s1[1],k+s1[2])) * rh1 -
+                                         (b2(i,l,k) - b2(i+s2[0],l+s2[1],k+s2[2])) * rh2 - j(i,l,k);
+                        if (std::abs(s) > maxval) {
+                            maxval = s;
+                            maxind = Index3 {i, l, k};
+                        }
                     }
+                }
+            }
+            #pragma omp critical
+            {
+                if (maxval_l > maxval) {
+                    maxval = maxval_l;
+                    maxind = maxind_l;
                 }
             }
         }
@@ -859,49 +509,15 @@ c===================================== rotB-j
     const auto mrx = computeMaxRotDiff(0, bz, by, jx, rhy, rhz);
     outputMaxI("max(rotB_x-jx)=", mrx.first, mrx.second);
 
-/*
-      do k=2,km+1
-         do l=1,lm+1
-            do i=2,im+1
-               s4=(bx(i,l,k)-bx(i,l,k-1))/hz-
-     =            (bz(i,l,k)-bz(i-1,l,k))/hx-jy(i,l,k)
-               if(dabs(s4).gt.s2) then
-                  s2=s4
-                  i1=i
-                  l1=l
-                  k1=k
-               endif
-            enddo
-         enddo
-      enddo
-*/
-
     const auto mry = computeMaxRotDiff(1, bx, bz, jy, rhz, rhx);
     outputMaxI("max(rotB_y-jy)=", mry.first, mry.second);
-
-/*
-      do k=1,km+1
-         do l=2,lm+1
-            do i=2,im+1
-               s4=(by(i,l,k)-by(i-1,l,k))/hx-
-     =            (bx(i,l,k)-bx(i,l-1,k))/hy-jz(i,l,k)
-               if(dabs(s4).gt.s3) then
-                  s3=s4
-                  i1=i
-                  l1=l
-                  k1=k
-               endif
-            enddo
-         enddo
-      enddo
-*/
 
     const auto mrz = computeMaxRotDiff(2, by, bx, jz, rhx, rhy);
     outputMaxI("max(rotB_z-jz)=", mrz.first, mrz.second);
 
     auto te = std::chrono::steady_clock::now();
     auto work_time = std::chrono::duration<double>(te - ts).count();
-    std::cout << "TIME: " << work_time << endl;
+    std::cout << "THREADS: " << num_of_threads << ", TIME: " << work_time << endl;
 
     if (file_output) {
         out_lst.close();
