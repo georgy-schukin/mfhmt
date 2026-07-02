@@ -730,9 +730,7 @@ c===================================== divj
                 const double s = (jx(i,l,k) - jx(i-1,l,k)) * rhx +
                                  (jy(i,l,k) - jy(i,l-1,k)) * rhy +
                                  (jz(i,l,k) - jz(i,l,k-1)) * rhz;
-                if (std::abs(s) > maxval) {
-                    maxval = s;
-                }
+                maxval = std::max(std::abs(s), maxval);
             }
         }
     }
@@ -760,9 +758,7 @@ c===================================== divB
                 const double s = (bx(i+1,l,k) - bx(i,l,k)) * rhx +
                                  (by(i,l+1,k) - by(i,l,k)) * rhy +
                                  (bz(i,l,k+1) - bz(i,l,k)) * rhz;
-                if (std::abs(s) > maxval) {
-                    maxval = s;
-                }
+                maxval = std::max(std::abs(s), maxval);
             }
         }
     }
@@ -847,7 +843,7 @@ c===================================== rotB-j
                     const double s = (b1(i,l,k) - b1(i+s1[0],l+s1[1],k+s1[2])) * rh1 -
                                      (b2(i,l,k) - b2(i+s2[0],l+s2[1],k+s2[2])) * rh2 - j(i,l,k);
                     if (std::abs(s) > maxval) {
-                        maxval = s;
+                        maxval = std::abs(s);
                         maxind = Index3 {i, l, k};
                     }
                 }

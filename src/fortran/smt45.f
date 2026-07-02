@@ -328,7 +328,7 @@ c===================================== divj
                s1=(jx(i,l,k)-jx(i-1,l,k))*rhx+
      =            (jy(i,l,k)-jy(i,l-1,k))*rhy+
      =            (jz(i,l,k)-jz(i,l,k-1))*rhz
-               if(dabs(s1).gt.s) s=s1
+               if(dabs(s1).gt.s) s=dabs(s1)
             enddo
          enddo
       enddo
@@ -342,7 +342,7 @@ c===================================== divB
                s1=(bx(i+1,l,k)-bx(i,l,k))*rhx+
      =            (by(i,l+1,k)-by(i,l,k))*rhy+
      =            (bz(i,l,k+1)-bz(i,l,k))*rhz
-               if(dabs(s1).gt.s) s=s1
+               if(dabs(s1).gt.s) s=dabs(s1)
             enddo
          enddo
       enddo
@@ -381,7 +381,7 @@ c===================================== rotB-j
      =            (by(i,l,k)-by(i,l,k-1))*rhz-jx(i,l,k)
                s=dabs(s4)
                if(s.gt.s1) then
-                  s1=s4
+                  s1=s
                   i1=i
                   l1=l
                   k1=k
@@ -398,7 +398,7 @@ c===================================== rotB-j
                s4=(bx(i,l,k)-bx(i,l,k-1))*rhz-
      =            (bz(i,l,k)-bz(i-1,l,k))*rhx-jy(i,l,k)
                if(dabs(s4).gt.s2) then
-                  s2=s4
+                  s2=dabs(s4)
                   i1=i
                   l1=l
                   k1=k
@@ -415,7 +415,7 @@ c===================================== rotB-j
                s4=(by(i,l,k)-by(i-1,l,k))*rhx-
      =            (bx(i,l,k)-bx(i,l-1,k))*rhy-jz(i,l,k)
                if(dabs(s4).gt.s3) then 
-                  s3=s4
+                  s3=dabs(s4)
                   i1=i
                   l1=l
                   k1=k
