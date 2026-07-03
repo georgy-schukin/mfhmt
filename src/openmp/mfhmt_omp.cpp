@@ -273,10 +273,9 @@ int main(int argc, char **argv) {
 
     auto computeStepBlock = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int is, int ie, int ls, int le, int ks, int ke) -> double {
         double maxdiff = 0.0;
-        //#pragma omp parallel for collapse(3) reduction(max: maxdiff)
-        for (int k = ks; k < ke; k++) {
+        for (int i = is; i < ie; i++) {
             for (int l = ls; l < le; l++) {
-                for (int i = is; i < ie; i++) {
+                for (int k = ks; k < ke; k++) {
                     const double s = ((arr(i+1,l,k) + arr(i-1,l,k)) * rhx2 +
                                       (arr(i,l+1,k) + arr(i,l-1,k)) * rhy2 +
                                       (arr(i,l,k+1) + arr(i,l,k-1)) * rhz2 + j(i,l,k)) * rc2;
@@ -288,7 +287,26 @@ int main(int argc, char **argv) {
         return maxdiff;
     };
 
-    auto computeStep = [&](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
+    auto computeStepZBlock = [rhx2, rhy2, rhz2, rc2, &computeStepBlock](DArray3 &arr, const DArray3 &j, int is, int ie, int ls, int le, int ks, int ke, int kend) -> double {
+        double maxdiff = computeStepBlock(arr, j, is, ie, ls, le, ks, ke);
+        if (ke == kend) {
+            for (int i = is; i < ie; i++) {
+                for (int l = ls; l < le; l++) {
+                    const double s = ((arr(i+1,l,kend) + arr(i-1,l,kend)) * rhx2 +
+                                      (arr(i,l+1,kend) + arr(i,l-1,kend)) * rhy2 +
+                                      (arr(i,l,1) + arr(i,l,kend-1)) * rhz2 + j(i,l,kend)) * rc2;
+                    maxdiff = std::max(std::abs(arr(i,l,kend) - s), maxdiff);
+                    arr(i,l,kend) = s;
+                    arr(i,l,0) = s;
+                }
+            }
+        }
+        return maxdiff;
+    };
+
+    using TaskFuncType = std::function<double(DArray3&,const DArray3&,int,int,int,int,int,int)>;
+
+    auto computeWaveTasks = [&](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend, TaskFuncType &task_func) -> double {
         const int istart = 1, lstart = 1, kstart = 1;
         const int task_size_x = std::max((iend - istart) / 10, 10);
         const int task_size_y = std::max((lend - lstart) / 10, 10);
@@ -310,7 +328,7 @@ int main(int argc, char **argv) {
             const int le = std::min(ls + task_size_y, lend);
             const int ks = kstart + kk * task_size_x;
             const int ke = std::min(ks + task_size_z, kend);
-            const auto mx = computeStepBlock(arr, j, is, ie, ls, le, ks, ke);
+            const auto mx = task_func(arr, j, is, ie, ls, le, ks, ke);
             #pragma omp critical (doTask)
             {
                 maxdiff = std::max(maxdiff, mx);
@@ -355,27 +373,18 @@ int main(int argc, char **argv) {
         return maxdiff;
     };
 
-    auto computeStepZ = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
-        double maxdiff = 0.0;
-        //#pragma omp parallel for collapse(3) reduction(max: maxdiff)
-        for (int l = 1; l < lend; l++) {
-            for (int i = 1; i < iend; i++) {
-                for (int k = 1; k < kend; k++) {
-                    const double s = ((arr(i+1,l,k) + arr(i-1,l,k)) * rhx2 +
-                                      (arr(i,l+1,k) + arr(i,l-1,k)) * rhy2 +
-                                      (arr(i,l,k+1) + arr(i,l,k-1)) * rhz2 + j(i,l,k)) * rc2;
-                    maxdiff = std::max(std::abs(arr(i,l,k) - s), maxdiff);
-                    arr(i,l,k) = s;
-                }
-                const double s = ((arr(i+1,l,kend) + arr(i-1,l,kend)) * rhx2 +
-                                  (arr(i,l+1,kend) + arr(i,l-1,kend)) * rhy2 +
-                                  (arr(i,l,1) + arr(i,l,kend-1)) * rhz2 + j(i,l,kend)) * rc2;
-                maxdiff = std::max(std::abs(arr(i,l,kend) - s), maxdiff);
-                arr(i,l,kend) = s;
-                arr(i,l,0) = s;
-            }
-        }
-        return maxdiff;
+    auto computeStep = [&](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
+        TaskFuncType func = [&](DArray3 &arr, const DArray3 &j, int is, int ie, int ls, int le, int ks, int ke) {
+            return computeStepBlock(arr, j, is,ie, ls, le, ks, ke);
+        };
+        return computeWaveTasks(arr, j, iend, lend, kend, func);
+    };
+
+    auto computeStepZ = [&](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
+        TaskFuncType func = [&](DArray3 &arr, const DArray3 &j, int is, int ie, int ls, int le, int ks, int ke) {
+            return computeStepZBlock(arr, j, is,ie, ls, le, ks, ke, kend);
+        };
+        return computeWaveTasks(arr, j, iend, lend, kend, func);
     };
 
     addSliceZ(jx, 1, km + 1, im + 2, lm + 2);
