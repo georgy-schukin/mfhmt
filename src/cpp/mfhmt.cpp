@@ -723,19 +723,28 @@ c===================================== divj
          enddo
       enddo
 */
-    double maxval = 0.0;
-    for (int k = 1; k < km + 1; k++) {
-        for (int l = 1; l < lm + 1; l++) {
-            for (int i = 1; i < im + 1; i++) {
-                const double s = (jx(i,l,k) - jx(i-1,l,k)) * rhx +
-                                 (jy(i,l,k) - jy(i,l-1,k)) * rhy +
-                                 (jz(i,l,k) - jz(i,l,k-1)) * rhz;
-                maxval = std::max(std::abs(s), maxval);
+    auto computeDiv = [im, lm, km, rhx, rhy, rhz](const DArray3 &x, const DArray3 &y, const DArray3 &z, int start, int shift1, int shift2)
+    -> std::pair<double, Index3> {
+        double maxval = 0.0;
+        Index3 maxind {0, 0, 0};
+        for (int k = start; k < km + 1; k++) {
+            for (int l = start; l < lm + 1; l++) {
+                for (int i = start; i < im + 1; i++) {
+                    const double s = (x(i + shift1, l, k) - x(i + shift2, l, k)) * rhx +
+                                     (y(i, l + shift1, k) - y(i, l + shift2, k)) * rhy +
+                                     (z(i, l, k + shift1) - z(i, l, k + shift2)) * rhz;
+                    if (std::abs(s) > maxval) {
+                        maxval = std::abs(s);
+                        maxind = {i, l, k};
+                    }
+                }
             }
         }
-    }
+        return std::make_pair(maxval, maxind);
+    };
 
-    outputMax("max(divj)=", maxval);
+    const auto mdj = computeDiv(jx, jy, jz, 1, 0, -1);
+    outputMax("max(divj)=", mdj.first);
 
 /*
 c===================================== divB
@@ -751,19 +760,10 @@ c===================================== divB
          enddo
       enddo
 */
-    maxval = 0.0;
-    for (int k = 0; k < km + 1; k++) {
-        for (int l = 0; l < lm + 1; l++) {
-            for (int i = 0; i < im + 1; i++) {
-                const double s = (bx(i+1,l,k) - bx(i,l,k)) * rhx +
-                                 (by(i,l+1,k) - by(i,l,k)) * rhy +
-                                 (bz(i,l,k+1) - bz(i,l,k)) * rhz;
-                maxval = std::max(std::abs(s), maxval);
-            }
-        }
-    }
 
-    outputMax("max(divB)=", maxval);
+
+    const auto mdb = computeDiv(bx, by, bz, 0, 1, 0);
+    outputMax("max(divB)=", mdb.first);
 /*
 c===================================== divA
       s1=0.d0
@@ -784,23 +784,9 @@ c===================================== divA
          enddo
       enddo
 */
-    maxval = 0.0;
-    Index3 maxind {0, 0, 0};
-    for (int k = 1; k < km + 1; k++) {
-        for (int l = 1; l < lm + 1; l++) {
-            for (int i = 1; i < im + 1; i++) {
-                const double s = (ax(i,l,k) - ax(i-1,l,k)) * rhx +
-                                 (ay(i,l,k) - ay(i,l-1,k)) * rhy +
-                                 (az(i,l,k) - az(i,l,k-1)) * rhz;
-                if (std::abs(s) > maxval) {
-                    maxval = std::abs(s);
-                    maxind = {i, l, k};
-                }
-            }
-        }
-    }
 
-    outputMaxI("max(divA)=", maxval, maxind);
+    const auto mda = computeDiv(ax, ay, az, 1, 0, -1);
+    outputMaxI("max(divA)=", mda.first, mda.second);
 
 /*
 c===================================== rotB-j
@@ -825,8 +811,8 @@ c===================================== rotB-j
       enddo
 */
 
-    auto computeMaxRotDiff = [im, lm, km](int dim, const DArray3 &b1, const DArray3 &b2, const DArray3 &j, double rh1, double rh2) ->
-    std::pair<double, Index3> {
+    auto computeRotDiff = [im, lm, km](int dim, const DArray3 &b1, const DArray3 &b2, const DArray3 &j, double rh1, double rh2)
+    -> std::pair<double, Index3> {
         const static Index3 i_start {0, 1, 1};
         const static Index3 l_start {1, 0, 1};
         const static Index3 k_start {1, 1, 0};
@@ -852,7 +838,7 @@ c===================================== rotB-j
         return std::make_pair(maxval, maxind);
     };
 
-    const auto mrx = computeMaxRotDiff(0, bz, by, jx, rhy, rhz);
+    const auto mrx = computeRotDiff(0, bz, by, jx, rhy, rhz);
     outputMaxI("max(rotB_x-jx)=", mrx.first, mrx.second);
 
 /*
@@ -872,7 +858,7 @@ c===================================== rotB-j
       enddo
 */
 
-    const auto mry = computeMaxRotDiff(1, bx, bz, jy, rhz, rhx);
+    const auto mry = computeRotDiff(1, bx, bz, jy, rhz, rhx);
     outputMaxI("max(rotB_y-jy)=", mry.first, mry.second);
 
 /*
@@ -892,7 +878,7 @@ c===================================== rotB-j
       enddo
 */
 
-    const auto mrz = computeMaxRotDiff(2, by, bx, jz, rhx, rhy);
+    const auto mrz = computeRotDiff(2, by, bx, jz, rhx, rhy);
     outputMaxI("max(rotB_z-jz)=", mrz.first, mrz.second);
 
     auto te = std::chrono::steady_clock::now();
