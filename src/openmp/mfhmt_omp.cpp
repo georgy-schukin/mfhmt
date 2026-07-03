@@ -26,6 +26,9 @@ int main(int argc, char **argv) {
     const int FOUT_DEF = 1;
     const int SOUT_DEF = 0;
 
+    const int NUM_OF_TASKS_PER_DIM = 10;
+    const int MIN_TASK_SIZE_PER_DIM = 10;
+
     if (argc > 1) {
         const auto s = string(argv[1]);
         if (s == "-h" || s == "--help") {
@@ -306,11 +309,13 @@ int main(int argc, char **argv) {
 
     using TaskFuncType = std::function<double(DArray3&,const DArray3&,int,int,int,int,int,int)>;
 
+    std::vector<int> task_counter(num_of_threads, 0);
+
     auto computeWaveTasks = [&](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend, TaskFuncType &task_func) -> double {
         const int istart = 1, lstart = 1, kstart = 1;
-        const int task_size_x = std::max((iend - istart) / 10, 10);
-        const int task_size_y = std::max((lend - lstart) / 10, 10);
-        const int task_size_z = std::max((kend - kstart) / 10, 10);
+        const int task_size_x = std::max((iend - istart) / NUM_OF_TASKS_PER_DIM, MIN_TASK_SIZE_PER_DIM);
+        const int task_size_y = std::max((lend - lstart) / NUM_OF_TASKS_PER_DIM, MIN_TASK_SIZE_PER_DIM);
+        const int task_size_z = std::max((kend - kstart) / NUM_OF_TASKS_PER_DIM, MIN_TASK_SIZE_PER_DIM);
         const int num_tasks_x = std::ceil(float(iend - istart) / task_size_x);
         const int num_tasks_y = std::ceil(float(lend - lstart) / task_size_y);
         const int num_tasks_z = std::ceil(float(kend - kstart) / task_size_z);
@@ -324,9 +329,9 @@ int main(int argc, char **argv) {
         doTask = [&](int ii, int ll, int kk) {
             const int is = istart + ii * task_size_x;
             const int ie = std::min(is + task_size_x, iend);
-            const int ls = lstart + ll * task_size_x;
+            const int ls = lstart + ll * task_size_y;
             const int le = std::min(ls + task_size_y, lend);
-            const int ks = kstart + kk * task_size_x;
+            const int ks = kstart + kk * task_size_z;
             const int ke = std::min(ks + task_size_z, kend);
             const auto mx = task_func(arr, j, is, ie, ls, le, ks, ke);
             #pragma omp critical (doTask)
@@ -337,6 +342,7 @@ int main(int argc, char **argv) {
                 placeTask(ii + 1, ll, kk);
                 placeTask(ii, ll + 1, kk);
                 placeTask(ii, ll, kk + 1);
+                task_counter[omp_get_thread_num()]++;
             }
         };
 
@@ -591,6 +597,9 @@ int main(int argc, char **argv) {
     auto te = std::chrono::steady_clock::now();
     auto work_time = std::chrono::duration<double>(te - ts).count();
     std::cout << "THREADS: " << num_of_threads << ", TIME: " << work_time << endl;
+    for (int i = 0; i < num_of_threads; i++) {
+        std::cout << "Thread " << i << " tasks: " << task_counter[i] << std::endl;
+    }
 
     if (file_output) {
         out_lst.close();
