@@ -1,5 +1,6 @@
 #include "common.h"
 #include "output.h"
+#include "timer.h"
 
 #include <omp.h>
 
@@ -127,7 +128,7 @@ int main(int argc, char **argv) {
         r(i+1,l+1,k) += sw * (dx * dy + s3);
     };
 
-    auto ts = std::chrono::steady_clock::now();
+    Timer timer;
 
     double x = x0 + r0;
     double y = y0;
@@ -310,8 +311,12 @@ int main(int argc, char **argv) {
     using TaskFuncType = std::function<double(DArray3&,const DArray3&,int,int,int,int,int,int)>;
 
     std::vector<int> task_counter(num_of_threads, 0);
+    std::vector<double> task_work_time(num_of_threads, 0);
+    std::vector<double> task_crit_time(num_of_threads, 0);
 
     auto computeWaveTasks = [&](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend, TaskFuncType &task_func) -> double {
+        static const int PLACED = 1;
+        static const int DONE = 2;
         const int istart = 1, lstart = 1, kstart = 1;
         const int task_size_x = std::max((iend - istart) / NUM_OF_TASKS_PER_DIM, MIN_TASK_SIZE_PER_DIM);
         const int task_size_y = std::max((lend - lstart) / NUM_OF_TASKS_PER_DIM, MIN_TASK_SIZE_PER_DIM);
@@ -320,13 +325,13 @@ int main(int argc, char **argv) {
         const int num_tasks_y = std::ceil(float(lend - lstart) / task_size_y);
         const int num_tasks_z = std::ceil(float(kend - kstart) / task_size_z);
         double maxdiff = 0.0;
-        Array3D<int> done(num_tasks_x, num_tasks_y, num_tasks_z);
-        Array3D<int> placed(num_tasks_x, num_tasks_y, num_tasks_z);
+        Array3D<int> state(num_tasks_x, num_tasks_y, num_tasks_z, 0);
 
         std::function<void(int,int,int)> doTask;
         std::function<void(int,int,int)> placeTask;
 
         doTask = [&](int ii, int ll, int kk) {
+            Timer tm;
             const int is = istart + ii * task_size_x;
             const int ie = std::min(is + task_size_x, iend);
             const int ls = lstart + ll * task_size_y;
@@ -334,16 +339,19 @@ int main(int argc, char **argv) {
             const int ks = kstart + kk * task_size_z;
             const int ke = std::min(ks + task_size_z, kend);
             const auto mx = task_func(arr, j, is, ie, ls, le, ks, ke);
+            task_work_time[omp_get_thread_num()] += tm.time();
+            tm.reset();
             #pragma omp critical (doTask)
             {
                 maxdiff = std::max(maxdiff, mx);
-                done(ii, ll, kk) = 1;
+                state(ii, ll, kk) = DONE;
                 // When complete, can spawn further tasks.
                 placeTask(ii + 1, ll, kk);
                 placeTask(ii, ll + 1, kk);
                 placeTask(ii, ll, kk + 1);
-                task_counter[omp_get_thread_num()]++;
             }
+            task_counter[omp_get_thread_num()]++;
+            task_crit_time[omp_get_thread_num()] += tm.time();
         };
 
         placeTask = [&](int ii, int ll, int kk) {
@@ -351,16 +359,17 @@ int main(int argc, char **argv) {
                 return;
             }
             // Check that task wasn't already placed.
-            if (placed(ii, ll, kk)) {
+            const auto &st = state(ii, ll, kk);
+            if (st == PLACED || st == DONE) {
                 return;
             }
             // Check that other required tasks completed already.
-            if ((ii > 0 && !done(ii - 1, ll, kk)) ||
-                (ll > 0 && !done(ii, ll - 1, kk)) ||
-                (kk > 0 && !done(ii, ll, kk - 1))) {
+            if ((ii > 0 && state(ii - 1, ll, kk) != DONE) ||
+                (ll > 0 && state(ii, ll - 1, kk) != DONE) ||
+                (kk > 0 && state(ii, ll, kk - 1) != DONE)) {
                 return;
             }
-            placed(ii, ll, kk) = 1;
+            state(ii, ll, kk) = PLACED;
             #pragma omp task
             doTask(ii, ll, kk);
         };
@@ -370,7 +379,7 @@ int main(int argc, char **argv) {
             #pragma omp master
             {
                 // Spawn the first task.
-                placed(0, 0, 0) = 1;
+                state(0, 0, 0) = PLACED;
                 #pragma omp task
                 doTask(0, 0, 0);
             }
@@ -405,6 +414,9 @@ int main(int argc, char **argv) {
 
     addSliceZ(jz, km, 0, im + 2, lm + 2);
     copySliceZ(jz, 0, km, im + 2, lm + 2);
+
+    const auto init_time = timer.time();
+    timer.reset();
 
     int n = 0;
     double sx = 0.0, sy = 0.0, sz = 0.0;
@@ -448,6 +460,9 @@ int main(int argc, char **argv) {
         out_lst << "n,sx,sy,sz=" << formatI(n) << formatS(sx) << formatS(sy) << formatS(sz) << std::endl;
     }
 
+    const auto a_time = timer.time();
+    timer.reset();
+
     auto computeB = [im, lm, km](int dim, const DArray3 &a1, const DArray3 &a2, DArray3 &b, double rh1, double rh2) {
         const static Index3 i_end {2, 1, 1};
         const static Index3 l_end {1, 2, 1};
@@ -471,6 +486,9 @@ int main(int argc, char **argv) {
     computeB(0, az, ay, bx, rhy, rhz);
     computeB(1, ax, az, by, rhz, rhx);
     computeB(2, ay, ax, bz, rhx, rhy);
+
+    const auto b_time = timer.time();
+    timer.reset();
 
     auto outputMax = [&file_output, &out_lst](const std::string &str, double m) {
         if (file_output) {
@@ -526,6 +544,9 @@ int main(int argc, char **argv) {
     const auto mda = computeDiv(ax, ay, az, 1, 0, -1);
     outputMaxI("max(divA)=", mda.first, mda.second);
 
+    const auto div_time = timer.time();
+    timer.reset();
+
     auto computeRotDiff = [im, lm, km](int dim, const DArray3 &b1, const DArray3 &b2, const DArray3 &j, double rh1, double rh2) ->
     std::pair<double, Index3> {
         const static Index3 i_start {0, 1, 1};
@@ -575,11 +596,20 @@ int main(int argc, char **argv) {
     const auto mrz = computeRotDiff(2, by, bx, jz, rhx, rhy);
     outputMaxI("max(rotB_z-jz)=", mrz.first, mrz.second);
 
-    auto te = std::chrono::steady_clock::now();
-    auto work_time = std::chrono::duration<double>(te - ts).count();
+    const auto rot_time = timer.time();
+
+    const auto work_time = init_time + a_time + b_time + div_time + rot_time;
     std::cout << "THREADS: " << num_of_threads << ", TIME: " << work_time << endl;
+    std::cout << "Init: " << init_time <<
+        ", A: " << a_time <<
+        ", B: " << b_time <<
+        ", div: " << div_time <<
+        ", rot: " << rot_time << std::endl;
     for (int i = 0; i < num_of_threads; i++) {
-        std::cout << "Thread " << i << " tasks: " << task_counter[i] << std::endl;
+        std::cout << "Thread " << i << ": tasks: " << task_counter[i] <<
+            ", work time: " << task_work_time[i] <<
+            ", crit time: " << task_crit_time[i] <<
+            std::endl;
     }
 
     if (file_output) {

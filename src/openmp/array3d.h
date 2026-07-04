@@ -8,13 +8,13 @@ template <typename T>
 class Array3D {
 public:
     Array3D() {}
-    Array3D(size_t sx, size_t sy, size_t sz) :
+    Array3D(size_t sx, size_t sy, size_t sz, const T &value = T {}) :
         _size {sx, sy, sz},
-        _data(sx * sy * sz, T {}) {
+        _data(sx * sy * sz, value) {
     }
-    Array3D(const std::array<size_t, 3> &sz) :
+    Array3D(const std::array<size_t, 3> &sz, const T &value = T {}) :
         _size(sz),
-        _data(sz[0] * sz[1] * sz[2], T {}) {
+        _data(sz[0] * sz[1] * sz[2], value) {
     }
 
     void populate(const T* raw_data, size_t data_sz) {
