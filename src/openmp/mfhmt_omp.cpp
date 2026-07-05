@@ -26,9 +26,8 @@ int main(int argc, char **argv) {
     const int NM_DEF = 1000;
     const int FOUT_DEF = 1;
     const int SOUT_DEF = 0;
-
-    const int NUM_OF_TASKS_PER_DIM = 10;
-    const int MIN_TASK_SIZE_PER_DIM = 10;
+    const int TASKS_PER_DIM_DEF = 10;
+    const int MIN_TASK_SIZE_DEF = 10;
 
     if (argc > 1) {
         const auto s = string(argv[1]);
@@ -41,6 +40,8 @@ int main(int argc, char **argv) {
                 " [nm=" << NM_DEF << "]" <<
                 " [file_output=" << FOUT_DEF << "]" <<
                 " [screen_output=" << SOUT_DEF << "]" <<
+                " [tasks_per_dim=" << TASKS_PER_DIM_DEF << "]" <<
+                " [min_task_size=" << MIN_TASK_SIZE_DEF << "]" <<
                 std::endl;
             return 0;
         }
@@ -57,6 +58,8 @@ int main(int argc, char **argv) {
     const int nm = intArg(5, NM_DEF);
     const bool file_output = intArg(6, FOUT_DEF);
     const bool screen_output = intArg(7, SOUT_DEF);
+    const int tasks_per_dim = intArg(8, TASKS_PER_DIM_DEF);
+    const int min_task_size = intArg(9, MIN_TASK_SIZE_DEF);
 
     omp_set_num_threads(num_of_threads);
 
@@ -318,9 +321,9 @@ int main(int argc, char **argv) {
         static const int PLACED = 1;
         static const int DONE = 2;
         const int istart = 1, lstart = 1, kstart = 1;
-        const int task_size_x = std::max((iend - istart) / NUM_OF_TASKS_PER_DIM, MIN_TASK_SIZE_PER_DIM);
-        const int task_size_y = std::max((lend - lstart) / NUM_OF_TASKS_PER_DIM, MIN_TASK_SIZE_PER_DIM);
-        const int task_size_z = std::max((kend - kstart) / NUM_OF_TASKS_PER_DIM, MIN_TASK_SIZE_PER_DIM);
+        const int task_size_x = std::max((iend - istart) / tasks_per_dim, min_task_size);
+        const int task_size_y = std::max((lend - lstart) / tasks_per_dim, min_task_size);
+        const int task_size_z = std::max((kend - kstart) / tasks_per_dim, min_task_size);
         const int num_tasks_x = std::ceil(float(iend - istart) / task_size_x);
         const int num_tasks_y = std::ceil(float(lend - lstart) / task_size_y);
         const int num_tasks_z = std::ceil(float(kend - kstart) / task_size_z);
@@ -376,7 +379,7 @@ int main(int argc, char **argv) {
 
         #pragma omp parallel
         {
-            #pragma omp master
+            #pragma omp single
             {
                 // Spawn the first task.
                 state(0, 0, 0) = PLACED;
@@ -603,8 +606,8 @@ int main(int argc, char **argv) {
     std::cout << "Init: " << init_time <<
         ", A: " << a_time <<
         ", B: " << b_time <<
-        ", div: " << div_time <<
-        ", rot: " << rot_time << std::endl;
+        ", Div: " << div_time <<
+        ", Rot: " << rot_time << std::endl;
     for (int i = 0; i < num_of_threads; i++) {
         std::cout << "Thread " << i << ": tasks: " << task_counter[i] <<
             ", work time: " << task_work_time[i] <<
