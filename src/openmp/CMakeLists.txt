@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.0...3.5)
 
 project(MFHMT_OMP CXX)
 
@@ -11,3 +11,5 @@ add_executable(mfhmt_omp
 )
 
 target_link_libraries(mfhmt_omp PRIVATE OpenMP::OpenMP_CXX)
+
+install(TARGETS mfhmt_omp DESTINATION openmp)

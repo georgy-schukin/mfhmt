@@ -1,7 +1,9 @@
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.0...3.5)
 
 project(MFHMT_F Fortran)
 
 add_executable(mfhmt_f
     smt45.f
 )
+
+install(TARGETS mfhmt_f DESTINATION fortran)
