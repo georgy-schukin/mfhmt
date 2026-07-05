@@ -602,7 +602,8 @@ int main(int argc, char **argv) {
     const auto rot_time = timer.time();
 
     const auto work_time = init_time + a_time + b_time + div_time + rot_time;
-    std::cout << "THREADS: " << num_of_threads << ", TIME: " << work_time << endl;
+    std::cout << "IM: " << im << ", LM: " << lm << ", KM: " << km << ", NM: " << nm << std::endl;
+    std::cout << "THREADS: " << num_of_threads << ", TIME: " << work_time << std::endl;
     std::cout << "Init: " << init_time <<
         ", A: " << a_time <<
         ", B: " << b_time <<
