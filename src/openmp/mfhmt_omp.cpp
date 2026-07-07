@@ -331,7 +331,30 @@ int main(int argc, char **argv) {
         Array3D<int> state(num_tasks_x, num_tasks_y, num_tasks_z, 0);
 
         std::function<void(int,int,int)> doTask;
-        std::function<void(int,int,int)> placeTask;
+
+        auto spawnTask = [&](int ii, int ll, int kk) {
+            #pragma omp task shared(doTask)
+            doTask(ii, ll, kk);
+        };
+
+        auto placeTask = [&](int ii, int ll, int kk) -> bool {
+            if (ii >= num_tasks_x || ll >= num_tasks_y || kk >= num_tasks_z) {
+                return false;
+            }
+            // Check that task wasn't already placed.
+            const auto &st = state(ii, ll, kk);
+            if (st == PLACED || st == DONE) {
+                return false;
+            }
+            // Check that other required tasks completed already.
+            if ((ii > 0 && state(ii - 1, ll, kk) != DONE) ||
+                (ll > 0 && state(ii, ll - 1, kk) != DONE) ||
+                (kk > 0 && state(ii, ll, kk - 1) != DONE)) {
+                return false;
+            }
+            state(ii, ll, kk) = PLACED;
+            return true;
+        };
 
         doTask = [&](int ii, int ll, int kk) {
             Timer tm;
@@ -343,38 +366,29 @@ int main(int argc, char **argv) {
             const int ke = std::min(ks + task_size_z, kend);
             const auto mx = task_func(arr, j, is, ie, ls, le, ks, ke);
             task_work_time[omp_get_thread_num()] += tm.time();
+            bool launch_i = false, launch_l = false, launch_k = false;
             tm.reset();
-            #pragma omp critical (doTask)
+            #pragma omp critical (TaskFinish)
             {
                 maxdiff = std::max(maxdiff, mx);
                 state(ii, ll, kk) = DONE;
-                // When complete, can spawn further tasks.
-                placeTask(ii + 1, ll, kk);
-                placeTask(ii, ll + 1, kk);
-                placeTask(ii, ll, kk + 1);
+                // When complete, check that can spawn further tasks.
+                launch_i = placeTask(ii + 1, ll, kk);
+                launch_l = placeTask(ii, ll + 1, kk);
+                launch_k = placeTask(ii, ll, kk + 1);
             }
             task_counter[omp_get_thread_num()]++;
             task_crit_time[omp_get_thread_num()] += tm.time();
-        };
-
-        placeTask = [&](int ii, int ll, int kk) {
-            if (ii >= num_tasks_x || ll >= num_tasks_y || kk >= num_tasks_z) {
-                return;
+            // Actual tasks spawning
+            if (launch_i) {
+                spawnTask(ii + 1, ll, kk);
             }
-            // Check that task wasn't already placed.
-            const auto &st = state(ii, ll, kk);
-            if (st == PLACED || st == DONE) {
-                return;
+            if (launch_l) {
+                spawnTask(ii, ll + 1, kk);
             }
-            // Check that other required tasks completed already.
-            if ((ii > 0 && state(ii - 1, ll, kk) != DONE) ||
-                (ll > 0 && state(ii, ll - 1, kk) != DONE) ||
-                (kk > 0 && state(ii, ll, kk - 1) != DONE)) {
-                return;
+            if (launch_k) {
+                spawnTask(ii, ll, kk + 1);
             }
-            state(ii, ll, kk) = PLACED;
-            #pragma omp task shared(doTask)
-            doTask(ii, ll, kk);
         };
 
         #pragma omp parallel
@@ -383,8 +397,7 @@ int main(int argc, char **argv) {
             {
                 // Spawn the first task.
                 state(0, 0, 0) = PLACED;
-                #pragma omp task shared(doTask)
-                doTask(0, 0, 0);
+                spawnTask(0, 0, 0);
             }
             #pragma omp taskwait
         }
