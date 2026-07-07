@@ -373,7 +373,7 @@ int main(int argc, char **argv) {
                 return;
             }
             state(ii, ll, kk) = PLACED;
-            #pragma omp task
+            #pragma omp task shared(doTask)
             doTask(ii, ll, kk);
         };
 
@@ -383,7 +383,7 @@ int main(int argc, char **argv) {
             {
                 // Spawn the first task.
                 state(0, 0, 0) = PLACED;
-                #pragma omp task
+                #pragma omp task shared(doTask)
                 doTask(0, 0, 0);
             }
             #pragma omp taskwait
