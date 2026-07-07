@@ -404,7 +404,10 @@ int main(int argc, char **argv) {
         return maxdiff;
     };
 
+    double tasks_time = 0;
+
     auto computeWaveTasksWithDeps = [&](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend, TaskFuncType &task_func) -> double {
+        Timer task_t;
         const int istart = 1, lstart = 1, kstart = 1;
         const int task_size_x = std::max((iend - istart) / tasks_per_dim, min_task_size);
         const int task_size_y = std::max((lend - lstart) / tasks_per_dim, min_task_size);
@@ -463,6 +466,7 @@ int main(int argc, char **argv) {
             #pragma omp taskwait
         }
         delete[] done;
+        tasks_time += task_t.time();
         return *std::max_element(maxdiff.begin(), maxdiff.end());
     };
 
@@ -502,7 +506,7 @@ int main(int argc, char **argv) {
     do {
         n++;
 
-        sx = computeStep(ax, jx, im, lm + 1, km + 1);
+        sx = computeStep(ax, jx, im, lm + 1, km + 1);        
 
         computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13);
         computeBoundaryX(ax, ay, az, im, im - 1, im, -c12, -c13);
@@ -683,7 +687,9 @@ int main(int argc, char **argv) {
         ", A: " << a_time <<
         ", B: " << b_time <<
         ", Div: " << div_time <<
-        ", Rot: " << rot_time << std::endl;
+        ", Rot: " << rot_time <<
+        ", Tasks: " << tasks_time <<
+        std::endl;
     for (int i = 0; i < num_of_threads; i++) {
         std::cout << "Thread " << i << ": tasks: " << task_counter[i] <<
             ", work time: " << task_work_time[i] <<
