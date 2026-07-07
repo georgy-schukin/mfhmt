@@ -404,18 +404,82 @@ int main(int argc, char **argv) {
         return maxdiff;
     };
 
+    auto computeWaveTasksWithDeps = [&](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend, TaskFuncType &task_func) -> double {
+        const int istart = 1, lstart = 1, kstart = 1;
+        const int task_size_x = std::max((iend - istart) / tasks_per_dim, min_task_size);
+        const int task_size_y = std::max((lend - lstart) / tasks_per_dim, min_task_size);
+        const int task_size_z = std::max((kend - kstart) / tasks_per_dim, min_task_size);
+        const int num_tasks_x = std::ceil(float(iend - istart) / task_size_x);
+        const int num_tasks_y = std::ceil(float(lend - lstart) / task_size_y);
+        const int num_tasks_z = std::ceil(float(kend - kstart) / task_size_z);
+        double maxdiff = 0.0;
+
+        int *done = new int[num_tasks_x * num_tasks_y * num_tasks_z + 1];
+        auto index = [num_tasks_y, num_tasks_z](int i, int l, int k) {
+            return i * num_tasks_y * num_tasks_z + l * num_tasks_z + k;
+        };
+
+        auto doTask = [&](int ii, int ll, int kk) {
+            Timer tm;
+            const int is = istart + ii * task_size_x;
+            const int ie = std::min(is + task_size_x, iend);
+            const int ls = lstart + ll * task_size_y;
+            const int le = std::min(ls + task_size_y, lend);
+            const int ks = kstart + kk * task_size_z;
+            const int ke = std::min(ks + task_size_z, kend);
+            const auto mx = task_func(arr, j, is, ie, ls, le, ks, ke);
+            task_work_time[omp_get_thread_num()] += tm.time();
+            tm.reset();
+            #pragma omp critical (TaskFinish)
+            {
+                maxdiff = std::max(maxdiff, mx);
+            }
+            task_counter[omp_get_thread_num()]++;
+        };
+
+        auto spawnTask = [&](int ii, int ll, int kk) {
+            const int dep_i_index = ii > 0 ? index(ii - 1, ll, kk) + 1 : 0;
+            const int dep_l_index = ll > 0 ? index(ii, ll - 1, kk) + 1 : 0;
+            const int dep_k_index = kk > 0 ? index(ii, ll, kk - 1) + 1 : 0;
+            const int my_index = index(ii, ll, kk) + 1;
+            #pragma omp task untied depend(in: done[dep_i_index], done[dep_l_index], done[dep_k_index]) depend(out: done[my_index])
+            doTask(ii, ll, kk);
+        };
+
+        #pragma omp parallel
+        {
+            #pragma omp single
+            {
+                // Pseudo task to satisfy empty dependency.
+                #pragma omp task depend(out: done[0])
+                {}
+                // Spawn actual tasks with dependecnies.
+                for (int ii = 0; ii < num_tasks_x; ii++) {
+                    for (int ll = 0; ll < num_tasks_y; ll++) {
+                        for (int kk = 0; kk < num_tasks_z; kk++) {
+                            spawnTask(ii, ll, kk);
+                        }
+                    }
+                }
+            }
+            #pragma omp taskwait
+        }
+        delete[] done;
+        return maxdiff;
+    };
+
     auto computeStep = [&](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
         TaskFuncType func = [&](DArray3 &arr, const DArray3 &j, int is, int ie, int ls, int le, int ks, int ke) {
             return computeStepBlock(arr, j, is,ie, ls, le, ks, ke);
         };
-        return computeWaveTasks(arr, j, iend, lend, kend, func);
+        return computeWaveTasksWithDeps(arr, j, iend, lend, kend, func);
     };
 
     auto computeStepZ = [&](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
         TaskFuncType func = [&](DArray3 &arr, const DArray3 &j, int is, int ie, int ls, int le, int ks, int ke) {
             return computeStepZBlock(arr, j, is,ie, ls, le, ks, ke, kend);
         };
-        return computeWaveTasks(arr, j, iend, lend, kend, func);
+        return computeWaveTasksWithDeps(arr, j, iend, lend, kend, func);
     };
 
     addSliceZ(jx, 1, km + 1, im + 2, lm + 2);
