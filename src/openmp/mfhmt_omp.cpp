@@ -412,7 +412,7 @@ int main(int argc, char **argv) {
         const int num_tasks_x = std::ceil(float(iend - istart) / task_size_x);
         const int num_tasks_y = std::ceil(float(lend - lstart) / task_size_y);
         const int num_tasks_z = std::ceil(float(kend - kstart) / task_size_z);
-        double maxdiff = 0.0;
+        std::vector<double> maxdiff(num_of_threads, 0.0);
 
         int *done = new int[num_tasks_x * num_tasks_y * num_tasks_z + 1];
         auto index = [num_tasks_y, num_tasks_z](int i, int l, int k) {
@@ -428,13 +428,11 @@ int main(int argc, char **argv) {
             const int ks = kstart + kk * task_size_z;
             const int ke = std::min(ks + task_size_z, kend);
             const auto mx = task_func(arr, j, is, ie, ls, le, ks, ke);
-            task_work_time[omp_get_thread_num()] += tm.time();
+            const auto tnum = omp_get_thread_num();
+            task_work_time[tnum] += tm.time();
             tm.reset();
-            #pragma omp critical (TaskFinish)
-            {
-                maxdiff = std::max(maxdiff, mx);
-            }
-            task_counter[omp_get_thread_num()]++;
+            maxdiff[tnum] = std::max(maxdiff[tnum], mx);
+            task_counter[tnum]++;
         };
 
         auto spawnTask = [&](int ii, int ll, int kk) {
@@ -465,7 +463,7 @@ int main(int argc, char **argv) {
             #pragma omp taskwait
         }
         delete[] done;
-        return maxdiff;
+        return *std::max_element(maxdiff.begin(), maxdiff.end());
     };
 
     auto computeStep = [&](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
