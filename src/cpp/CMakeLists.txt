@@ -4,7 +4,7 @@ project(MFHMT_CPP CXX)
 
 add_executable(mfhmt
     mfhmt.cpp
-    output.cpp
+    ../common/output.cpp
 )
 
 install(TARGETS mfhmt DESTINATION cpp)

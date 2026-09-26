@@ -1,23 +1,14 @@
-#include "common.h"
-#include "output.h"
+#include "defs.h"
+#include "../common/output.h"
+#include "../common/timer.h"
 
-#include <vector>
-#include <array>
-#include <iostream>
-#include <iomanip>
-#include <fstream>
 #include <cmath>
-#include <string>
-#include <chrono>
-#include <algorithm>
 #include <tuple>
+#include <iostream>
 
 using namespace std;
 
 int main(int argc, char **argv) {
-/*
-    program simit44
-*/
 
     const int IM_DEF = 40;
     const int LM_DEF = 40;
@@ -82,15 +73,16 @@ int main(int argc, char **argv) {
     std::ofstream out_lst;
 
     if (file_output) {
-        out_lst.open("smt45.lst");
+        out_lst.open("output.lst");
         out_lst << "qj=" << formatF(qj) << std::endl;
         out_lst << "1. im,lm,km,nm=" << formatI(im) << formatI(lm) << formatI(km) << formatI(nm) << std::endl;
         out_lst << "1. hx,hy,hz=" << formatF(hx) << formatF(hy) << formatF(hz) << std::endl;
     }
 
+    // Init functions
+
 /*
-c==============================================================
-      subroutine pqr(i,l,k,h1,h2,h3,x,y,z,x1,y1,z1,a)
+    subroutine pqr(i,l,k,h1,h2,h3,x,y,z,x1,y1,z1,a)
       parameter(im=40,lm=40,km=20)
       real*8 p(im+2,lm+2,km+2),q(im+2,lm+2,km+2),r(im+2,lm+2,km+2)
       integer i,l,k
@@ -161,10 +153,8 @@ c==============================================================
         r(i+1,l+1,k) += sw * (dx * dy + s3);
     };
 
-    auto ts = std::chrono::steady_clock::now();
-
 /*
-c zadanie vintovogo toka
+    zadanie vintovogo toka
 
       do k=1,km+2
          do l=1,lm+2
@@ -245,103 +235,90 @@ c zadanie vintovogo toka
 
   111 continue
 */
-
-    double x = x0 + r0;
-    double y = y0;
-    double z = 0.0;
-    for (int n = 1; n <= nm; n++) {
-        const double x1 = x0 + r0 * std::cos(c1 * n);
-        const double y1 = y0 + r0 * std::sin(c1 * n);
-        const double z1 = h0 * c1 * n;
-        const int i1 = std::trunc(x * rhx + 1.5);
-        const int l1 = std::trunc(y * rhy + 1.5);
-        const int k1 = std::trunc(z * rhz + 1.5);
-        const int i2 = std::trunc(x1 * rhx + 1.5);
-        const int l2 = std::trunc(y1 * rhy + 1.5);
-        const int k2 = std::trunc(z1 * rhz + 1.5);
-        const int i = std::abs(i2 - i1);
-        const int l = std::abs(l2 - l1);
-        const int k = std::abs(k2 - k1);
-        const int m = 4 * i + 2 * l + k;
-        if ((m < 1) || (m > 7)) {
-            pqr(jx, jy, jz, i1, l1, k1, x, y, z, x1, y1, z1);
-        } else {
-            double x2, y2, z2;
-            double s;
-            switch (m) {
-            case 1:
-                z2 = hz * (0.5 * (k1 + k2) - 1.0);
-                s = (z2 - z) / (z1 - z);
-                x2 = x + (x1 - x) * s;
-                y2 = y + (y1 - y) * s;
-                break;
-            case 2:
-                y2 = hy * (0.5 * (l1 + l2) - 1.0);
-                s = (y2 - y) / (y1 - y);
-                x2 = x + (x1 - x) * s;
-                z2 = z + (z1 - z) * s;
-                break;
-            case 3:
-                y2 = hy * (0.5 * (l1 + l2) - 1.0);
-                z2 = hz * (0.5 * (k1 + k2) - 1.0);
-                s = ((z1 - z) * (z2 - z) + (y1 - y) * (y2 - y)) / ((z1 - z) * (z1 - z) + (y1 - y) * (y1 - y));
-                x2 = x + (x1 - x) * s;
-                break;
-            case 4:
-                x2 = hx * (0.5 * (i1 + i2) - 1.0);
-                s = (x2 - x) / (x1 - x);
-                y2 = y + (y1 - y) * s;
-                z2 = z + (z1 - z) * s;
-                break;
-            case 5:
-                x2 = hx * (0.5 * (i1 + i2) - 1.0);
-                z2 = hz * (0.5 * (k1 + k2) - 1.0);
-                s = ((z1 - z) * (z2 - z) + (x1 - x) * (x2 - x)) / ((z1 - z) * (z1 - z) + (x1 - x) * (x1 - x));
-                y2 = y + (y1 - y) * s;
-                break;
-            case 6:
-                x2 = hx * (0.5 * (i1 + i2) - 1.0);
-                y2 = hy * (0.5 * (l1 + l2) - 1.0);
-                s=((y1 - y) * (y2 - y) + (x1 - x) * (x2 - x)) / ((y1 - y) * (y1 - y) + (x1 - x) * (x1 - x));
-                z2 = z + (z1 - z) * s;
-                break;
-            case 7:
-                x2 = hx * (0.5 * (i1 + i2) - 1.0);
-                y2 = hy * (0.5 * (l1 + l2) - 1.0);
-                z2 = hz * (0.5 * (k1 + k2) - 1.0);
-                break;
+    auto initHelicalCurrent = [x0, y0, r0, h0, nm, hx, hy, hz, rhx, rhy, rhz, c1, &pqr](DArray3 &jx, DArray3 &jy, DArray3 &jz) {
+        double x = x0 + r0;
+        double y = y0;
+        double z = 0.0;
+        for (int n = 1; n <= nm; n++) {
+            const double x1 = x0 + r0 * std::cos(c1 * n);
+            const double y1 = y0 + r0 * std::sin(c1 * n);
+            const double z1 = h0 * c1 * n;
+            const int i1 = std::trunc(x * rhx + 1.5);
+            const int l1 = std::trunc(y * rhy + 1.5);
+            const int k1 = std::trunc(z * rhz + 1.5);
+            const int i2 = std::trunc(x1 * rhx + 1.5);
+            const int l2 = std::trunc(y1 * rhy + 1.5);
+            const int k2 = std::trunc(z1 * rhz + 1.5);
+            const int i = std::abs(i2 - i1);
+            const int l = std::abs(l2 - l1);
+            const int k = std::abs(k2 - k1);
+            const int m = 4 * i + 2 * l + k;
+            if ((m < 1) || (m > 7)) {
+                pqr(jx, jy, jz, i1, l1, k1, x, y, z, x1, y1, z1);
+            } else {
+                double x2, y2, z2;
+                double s;
+                switch (m) {
+                case 1:
+                    z2 = hz * (0.5 * (k1 + k2) - 1.0);
+                    s = (z2 - z) / (z1 - z);
+                    x2 = x + (x1 - x) * s;
+                    y2 = y + (y1 - y) * s;
+                    break;
+                case 2:
+                    y2 = hy * (0.5 * (l1 + l2) - 1.0);
+                    s = (y2 - y) / (y1 - y);
+                    x2 = x + (x1 - x) * s;
+                    z2 = z + (z1 - z) * s;
+                    break;
+                case 3:
+                    y2 = hy * (0.5 * (l1 + l2) - 1.0);
+                    z2 = hz * (0.5 * (k1 + k2) - 1.0);
+                    s = ((z1 - z) * (z2 - z) + (y1 - y) * (y2 - y)) / ((z1 - z) * (z1 - z) + (y1 - y) * (y1 - y));
+                    x2 = x + (x1 - x) * s;
+                    break;
+                case 4:
+                    x2 = hx * (0.5 * (i1 + i2) - 1.0);
+                    s = (x2 - x) / (x1 - x);
+                    y2 = y + (y1 - y) * s;
+                    z2 = z + (z1 - z) * s;
+                    break;
+                case 5:
+                    x2 = hx * (0.5 * (i1 + i2) - 1.0);
+                    z2 = hz * (0.5 * (k1 + k2) - 1.0);
+                    s = ((z1 - z) * (z2 - z) + (x1 - x) * (x2 - x)) / ((z1 - z) * (z1 - z) + (x1 - x) * (x1 - x));
+                    y2 = y + (y1 - y) * s;
+                    break;
+                case 6:
+                    x2 = hx * (0.5 * (i1 + i2) - 1.0);
+                    y2 = hy * (0.5 * (l1 + l2) - 1.0);
+                    s=((y1 - y) * (y2 - y) + (x1 - x) * (x2 - x)) / ((y1 - y) * (y1 - y) + (x1 - x) * (x1 - x));
+                    z2 = z + (z1 - z) * s;
+                    break;
+                case 7:
+                    x2 = hx * (0.5 * (i1 + i2) - 1.0);
+                    y2 = hy * (0.5 * (l1 + l2) - 1.0);
+                    z2 = hz * (0.5 * (k1 + k2) - 1.0);
+                    break;
+                }
+                pqr(jx, jy, jz, i1, l1, k1, x, y, z, x2, y2, z2);
+                pqr(jx, jy, jz, i2, l2, k2, x2, y2, z2, x1, y1, z1);
             }
-            pqr(jx, jy, jz, i1, l1, k1, x, y, z, x2, y2, z2);
-            pqr(jx, jy, jz, i2, l2, k2, x2, y2, z2, x1, y1, z1);
+            x = x1;
+            y = y1;
+            z = z1;
         }
-        x = x1;
-        y = y1;
-        z = z1;
-    }
+    };
 
 /*
-c   vychislenie vektornogo potentsiala
+    vychislenie vektornogo potentsiala
 
-      eps=1.d-10
-      c2=2.d0/hx**2+2.d0/hy**2+2.d0/hz**2
-      c12=hx/hy
-      c13=hx/hz
-      c21=hy/hx
-      c23=hy/hz
-
-      do k=1,km+2
-         do l=1,lm+2
-            do i=1,im+2
-               ax(i,l,k)=0.d0
-               ay(i,l,k)=0.d0
-               az(i,l,k)=0.d0
-            enddo
-         enddo
-      enddo
-
-      n=0
-
-    8 n=n+1
+    eps=1.d-10
+    c2=2.d0/hx**2+2.d0/hy**2+2.d0/hz**2
+    c12=hx/hy
+    c13=hx/hz
+    c21=hy/hx
+    c23=hy/hz
 */
 
     const double hx2 = hx * hx;
@@ -390,6 +367,51 @@ c   vychislenie vektornogo potentsiala
         }
     };
 
+/*
+    do l=1,lm+2
+        do i=1,im+2
+            jx(i,l,2)=jx(i,l,2)+jx(i,l,km+2)
+            jx(i,l,km+1)=jx(i,l,km+1)+jx(i,l,1)
+            jx(i,l,1)=jx(i,l,km+1)
+            jx(i,l,km+2)=jx(i,l,2)
+
+            jy(i,l,2)=jy(i,l,2)+jy(i,l,km+2)
+            jy(i,l,km+1)=jy(i,l,km+1)+jy(i,l,1)
+            jy(i,l,1)=jy(i,l,km+1)
+            jy(i,l,km+2)=jy(i,l,2)
+
+            jz(i,l,km+1)=jz(i,l,km+1)+jz(i,l,1)
+            jz(i,l,1)=jz(i,l,km+1)
+        enddo
+    enddo
+*/
+
+    auto updateCurrent = [im, lm, km, &addSliceZ, &copySliceZ](DArray3 &jx, DArray3 &jy, DArray3 &jz) {
+        addSliceZ(jx, 1, km + 1, im + 2, lm + 2);
+        addSliceZ(jx, km, 0, im + 2, lm + 2);
+        copySliceZ(jx, 0, km, im + 2, lm + 2);
+        copySliceZ(jx, km + 1, 1, im + 2, lm + 2);
+
+        addSliceZ(jy, 1, km + 1, im + 2, lm + 2);
+        addSliceZ(jy, km, 0, im + 2, lm + 2);
+        copySliceZ(jy, 0, km, im + 2, lm + 2);
+        copySliceZ(jy, km + 1, 1, im + 2, lm + 2);
+
+        addSliceZ(jz, km, 0, im + 2, lm + 2);
+        copySliceZ(jz, 0, km, im + 2, lm + 2);
+    };
+
+/*
+      do k=2,km+1
+         do l=2,lm+1
+            ax(1,l,k)=ax(2,l,k)+c12*(ay(2,l,k)-ay(2,l-1,k))+
+     =               c13*(az(2,l,k)-az(2,l,k-1))
+            ax(im+1,l,k)=ax(im,l,k)-c12*(ay(im+1,l,k)-ay(im+1,l-1,k))-
+     =               c13*(az(im+1,l,k)-az(im+1,l,k-1))
+         enddo
+      enddo
+*/
+
     auto computeBoundaryX = [im, lm, km](DArray3 &ax, DArray3 &ay, DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
         for (int l = 1; l < lm + 1; l++) {
             for (int k = 1; k < km + 1; k++) {
@@ -400,6 +422,17 @@ c   vychislenie vektornogo potentsiala
         }
     };
 
+/*
+      do k=2,km+1
+         do i=2,im+1
+            ay(i,1,k)=ay(i,2,k)+c21*(ax(i,2,k)-ax(i-1,2,k))+
+     =          c23*(az(i,2,k)-az(i,2,k-1))
+            ay(i,lm+1,k)=ay(i,lm,k)-c21*(ax(i,lm+1,k)-ax(i-1,lm+1,k))-
+     =          c23*(az(i,lm+1,k)-az(i,lm+1,k-1))
+         enddo
+      enddo
+*/
+
     auto computeBoundaryY = [im, lm, km](DArray3 &ax, DArray3 &ay, DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
         for (int i = 1; i < im + 1; i++) {
             for (int k = 1; k < km + 1; k++) {
@@ -409,6 +442,22 @@ c   vychislenie vektornogo potentsiala
             }
         }
     };
+
+/*
+      sx=0.d0
+      do k=2,km+1
+         do l=2,lm+1
+            do i=2,im
+               s=((ax(i+1,l,k)+ax(i-1,l,k))/hx**2+
+     =            (ax(i,l+1,k)+ax(i,l-1,k))/hy**2+
+     =            (ax(i,l,k+1)+ax(i,l,k-1))/hz**2+jx(i,l,k))/c2
+               s2=dabs(ax(i,l,k)-s)
+               if(s2.gt.sx) sx=s2
+               ax(i,l,k)=s
+            enddo
+         enddo
+      enddo
+*/
 
     auto computeStep = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
@@ -425,6 +474,29 @@ c   vychislenie vektornogo potentsiala
         }
         return maxdiff;
     };
+
+/*
+      sz=0.d0
+      do l=2,lm+1
+         do i=2,im+1
+            do k=2,km
+               s=((az(i+1,l,k)+az(i-1,l,k))/hx**2+
+     =            (az(i,l+1,k)+az(i,l-1,k))/hy**2+
+     =            (az(i,l,k+1)+az(i,l,k-1))/hz**2+jz(i,l,k))/c2
+               s2=dabs(az(i,l,k)-s)
+               if(s2.gt.sz) sz=s2
+               az(i,l,k)=s
+            enddo
+            s=((az(i+1,l,km+1)+az(i-1,l,km+1))/hx**2+
+     =         (az(i,l+1,km+1)+az(i,l-1,km+1))/hy**2+
+     =         (az(i,l,2)+az(i,l,km))/hz**2+jz(i,l,km+1))/c2
+            s2=dabs(az(i,l,km+1)-s)
+            if(s2.gt.sz) sz=s2
+            az(i,l,km+1)=s
+            az(i,l,1)=s
+         enddo
+      enddo
+*/
 
     auto computeStepZ = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
@@ -449,197 +521,6 @@ c   vychislenie vektornogo potentsiala
     };
 
 /*
-      do l=1,lm+2
-         do i=1,im+2
-            jx(i,l,2)=jx(i,l,2)+jx(i,l,km+2)
-            jx(i,l,km+1)=jx(i,l,km+1)+jx(i,l,1)
-            jx(i,l,1)=jx(i,l,km+1)
-            jx(i,l,km+2)=jx(i,l,2)
-
-            jy(i,l,2)=jy(i,l,2)+jy(i,l,km+2)
-            jy(i,l,km+1)=jy(i,l,km+1)+jy(i,l,1)
-            jy(i,l,1)=jy(i,l,km+1)
-            jy(i,l,km+2)=jy(i,l,2)
-
-            jz(i,l,km+1)=jz(i,l,km+1)+jz(i,l,1)
-            jz(i,l,1)=jz(i,l,km+1)
-         enddo
-      enddo
-*/
-
-    addSliceZ(jx, 1, km + 1, im + 2, lm + 2);
-    addSliceZ(jx, km, 0, im + 2, lm + 2);
-    copySliceZ(jx, 0, km, im + 2, lm + 2);
-    copySliceZ(jx, km + 1, 1, im + 2, lm + 2);
-
-    addSliceZ(jy, 1, km + 1, im + 2, lm + 2);
-    addSliceZ(jy, km, 0, im + 2, lm + 2);
-    copySliceZ(jy, 0, km, im + 2, lm + 2);
-    copySliceZ(jy, km + 1, 1, im + 2, lm + 2);
-
-    addSliceZ(jz, km, 0, im + 2, lm + 2);
-    copySliceZ(jz, 0, km, im + 2, lm + 2);
-
-    int n = 0;
-    double sx = 0.0, sy = 0.0, sz = 0.0;
-
-    do {
-        n++;
-/*
-c  ax
-      sx=0.d0
-      do k=2,km+1
-         do l=2,lm+1
-            do i=2,im
-               s=((ax(i+1,l,k)+ax(i-1,l,k))/hx**2+
-     =            (ax(i,l+1,k)+ax(i,l-1,k))/hy**2+
-     =            (ax(i,l,k+1)+ax(i,l,k-1))/hz**2+jx(i,l,k))/c2
-               s2=dabs(ax(i,l,k)-s)
-               if(s2.gt.sx) sx=s2
-               ax(i,l,k)=s
-            enddo
-         enddo
-      enddo
-*/
-        sx = computeStep(ax, jx, im, lm + 1, km + 1);
-
-
-/*
-      do k=2,km+1
-         do l=2,lm+1
-            ax(1,l,k)=ax(2,l,k)+c12*(ay(2,l,k)-ay(2,l-1,k))+
-     =               c13*(az(2,l,k)-az(2,l,k-1))
-            ax(im+1,l,k)=ax(im,l,k)-c12*(ay(im+1,l,k)-ay(im+1,l-1,k))-
-     =               c13*(az(im+1,l,k)-az(im+1,l,k-1))
-         enddo
-      enddo
-*/
-        computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13);
-        computeBoundaryX(ax, ay, az, im, im - 1, im, -c12, -c13);
-
-/*
-      do l=1,lm+2
-         do i=1,im+1
-            ax(i,l,1)=ax(i,l,km+1)
-            ax(i,l,km+2)=ax(i,l,2)
-         enddo
-      enddo
-*/
-        copySliceZ(ax, 0, km, im + 1, lm + 2);
-        copySliceZ(ax, km + 1, 1, im + 1, lm + 2);
-
-/*
-      do k=1,km+2
-         do i=1,im+1
-            ax(i,1,k)=ax(i,2,k)             ! ?
-            ax(i,lm+2,k)=ax(i,lm+1,k)       ! ?
-         enddo
-      enddo
-*/
-        copySliceY(ax, 0, 1, im + 1, km + 2);
-        copySliceY(ax, lm + 1, lm, im + 1, km + 2);
-
-/*
-c  ay
-      sy=0.d0
-      do k=2,km+1
-         do l=2,lm
-            do i=2,im+1
-               s=((ay(i+1,l,k)+ay(i-1,l,k))/hx**2+
-     =            (ay(i,l+1,k)+ay(i,l-1,k))/hy**2+
-     =            (ay(i,l,k+1)+ay(i,l,k-1))/hz**2+jy(i,l,k))/c2
-               s2=dabs(ay(i,l,k)-s)
-               if(s2.gt.sy) sy=s2
-               ay(i,l,k)=s
-            enddo
-         enddo
-      enddo
-*/
-        sy = computeStep(ay, jy, im + 1, lm, km + 1);
-
-/*
-      do k=2,km+1
-         do i=2,im+1
-            ay(i,1,k)=ay(i,2,k)+c21*(ax(i,2,k)-ax(i-1,2,k))+
-     =          c23*(az(i,2,k)-az(i,2,k-1))
-            ay(i,lm+1,k)=ay(i,lm,k)-c21*(ax(i,lm+1,k)-ax(i-1,lm+1,k))-
-     =          c23*(az(i,lm+1,k)-az(i,lm+1,k-1))
-         enddo
-      enddo
-*/
-        computeBoundaryY(ax, ay, az, 0, 1, 1, c21, c23);
-        computeBoundaryY(ax, ay, az, lm, lm - 1, lm, -c21, -c23);
-
-/*
-      do l=1,lm+1
-         do i=1,im+2
-            ay(i,l,1)=ay(i,l,km+1)
-            ay(i,l,km+2)=ay(i,l,2)
-         enddo
-      enddo
-*/
-        copySliceZ(ay, 0, km, im + 1, lm + 1);
-        copySliceZ(ay, km + 1, 1, im + 1, lm + 1);
-
-/*
-      do k=1,km+2
-         do l=1,lm+1
-            ay(1,l,k)=ay(2,l,k)        ! ?
-            ay(im+2,l,k)=ay(im+1,l,k)  ! ?
-         enddo
-      enddo
-*/
-        copySliceX(ay, 0, 1, lm + 1, km + 2);
-        copySliceX(ay, im + 1, im, lm + 1, km + 2);
-
-/*
-c  az
-      sz=0.d0
-      do l=2,lm+1
-         do i=2,im+1
-            do k=2,km
-               s=((az(i+1,l,k)+az(i-1,l,k))/hx**2+
-     =            (az(i,l+1,k)+az(i,l-1,k))/hy**2+
-     =            (az(i,l,k+1)+az(i,l,k-1))/hz**2+jz(i,l,k))/c2
-               s2=dabs(az(i,l,k)-s)
-               if(s2.gt.sz) sz=s2
-               az(i,l,k)=s
-            enddo
-            s=((az(i+1,l,km+1)+az(i-1,l,km+1))/hx**2+
-     =         (az(i,l+1,km+1)+az(i,l-1,km+1))/hy**2+
-     =         (az(i,l,2)+az(i,l,km))/hz**2+jz(i,l,km+1))/c2
-            s2=dabs(az(i,l,km+1)-s)
-            if(s2.gt.sz) sz=s2
-            az(i,l,km+1)=s
-            az(i,l,1)=s
-         enddo
-      enddo
-*/
-        sz = computeStepZ(az, jz, im + 1, lm + 1, km);
-
-/*
-      do l=1,lm+2
-         do i=1,im+2
-            az(i,l,1)=az(i,l,km+1)
-            az(i,l,km+2)=az(i,l,2)
-         enddo
-      enddo
-*/
-        copySliceZ(az, 0, km, im + 2, lm + 2);
-        copySliceZ(az, km+1, 1, im + 2, lm + 2);
-
-        if (screen_output) {
-            std::cout << n << " " << sx << " " << sy << " " << sz << std::endl;
-        }
-    } while (sx > eps || sy > eps || sz > eps);
-
-    if (file_output) {
-        out_lst << "n,sx,sy,sz=" << formatI(n) << formatS(sx) << formatS(sy) << formatS(sz) << std::endl;
-    }
-
-/*
-c========================= bx, by, bz ============
-
       do k=1,km+1
          do l=1,lm+1
             do i=1,im+2
@@ -663,39 +544,11 @@ c========================= bx, by, bz ============
             for (int l = 0; l < lm + l_end[dim]; l++) {
                 for (int i = 0; i < im + i_end[dim]; i++) {
                     b(i,l,k) = (a1(i+s1[0],l+s1[1],k+s1[2]) - a1(i,l,k)) * rh1 -
-                               (a2(i+s2[0],l+s2[1],k+s2[2]) - a2(i,l,k)) * rh2;
+                                 (a2(i+s2[0],l+s2[1],k+s2[2]) - a2(i,l,k)) * rh2;
                 }
             }
         }
     };
-
-    computeB(0, az, ay, bx, rhy, rhz);
-
-/*
-      do k=1,km+1
-         do l=1,lm+2
-            do i=1,im+1
-               by(i,l,k)=(ax(i,l,k+1)-ax(i,l,k))/hz-
-     =                   (az(i+1,l,k)-az(i,l,k))/hx
-            enddo
-         enddo
-      enddo
-*/
-
-    computeB(1, ax, az, by, rhz, rhx);
-
-/*
-      do k=1,km+2
-         do l=1,lm+1
-            do i=1,im+1
-               bz(i,l,k)=(ay(i+1,l,k)-ay(i,l,k))/hx-
-     =                   (ax(i,l+1,k)-ax(i,l,k))/hy
-            enddo
-         enddo
-      enddo
-*/
-
-    computeB(2, ay, ax, bz, rhx, rhy);
 
     auto outputMax = [&file_output, &out_lst](const std::string &str, double m) {
         if (file_output) {
@@ -710,7 +563,6 @@ c========================= bx, by, bz ============
     };
 
 /*
-c===================================== divj
       s=0.d0
       do k=2,km+1
          do l=2,lm+1
@@ -723,8 +575,9 @@ c===================================== divj
          enddo
       enddo
 */
+
     auto computeDiv = [im, lm, km, rhx, rhy, rhz](const DArray3 &x, const DArray3 &y, const DArray3 &z, int start, int shift1, int shift2)
-    -> std::pair<double, Index3> {
+        -> std::pair<double, Index3> {
         double maxval = 0.0;
         Index3 maxind {0, 0, 0};
         for (int k = start; k < km + 1; k++) {
@@ -743,76 +596,30 @@ c===================================== divj
         return std::make_pair(maxval, maxind);
     };
 
-    const auto mdj = computeDiv(jx, jy, jz, 1, 0, -1);
-    outputMax("max(divj)=", mdj.first);
-
 /*
-c===================================== divB
-      s=0.d0
-      do k=1,km+1
-         do l=1,lm+1
-            do i=1,im+1
-               s1=(bx(i+1,l,k)-bx(i,l,k))/hx+
-     =            (by(i,l+1,k)-by(i,l,k))/hy+
-     =            (bz(i,l,k+1)-bz(i,l,k))/hz
-               if(dabs(s1).gt.s) s=s1
-            enddo
-         enddo
-      enddo
-*/
+    s1=0.d0
+    s2=0.d0
+    s3=0.d0
 
-
-    const auto mdb = computeDiv(bx, by, bz, 0, 1, 0);
-    outputMax("max(divB)=", mdb.first);
-/*
-c===================================== divA
-      s1=0.d0
-      do k=2,km+1
-         do l=2,lm+1
-            do i=2,im+1
-               s2=(ax(i,l,k)-ax(i-1,l,k))/hx+
-     =            (ay(i,l,k)-ay(i,l-1,k))/hy+
-     =            (az(i,l,k)-az(i,l,k-1))/hz
-               s=dabs(s2)
-               if(s.gt.s1) then
-                  s1=s
-                  i1=i
-                  l1=l
-                  k1=k
-               endif
-            enddo
-         enddo
-      enddo
-*/
-
-    const auto mda = computeDiv(ax, ay, az, 1, 0, -1);
-    outputMaxI("max(divA)=", mda.first, mda.second);
-
-/*
-c===================================== rotB-j
-      s1=0.d0
-      s2=0.d0
-      s3=0.d0
-
-      do k=2,km+1
-         do l=2,lm+1
-            do i=1,im+1
-               s4=(bz(i,l,k)-bz(i,l-1,k))/hy-
-     =            (by(i,l,k)-by(i,l,k-1))/hz-jx(i,l,k)
-               s=dabs(s4)
-               if(s.gt.s1) then
-                  s1=s4
-                  i1=i
-                  l1=l
-                  k1=k
-               endif
-            enddo
-         enddo
-      enddo
+    do k=2,km+1
+     do l=2,lm+1
+        do i=1,im+1
+           s4=(bz(i,l,k)-bz(i,l-1,k))/hy-
+    =            (by(i,l,k)-by(i,l,k-1))/hz-jx(i,l,k)
+           s=dabs(s4)
+           if(s.gt.s1) then
+              s1=s4
+              i1=i
+              l1=l
+              k1=k
+           endif
+        enddo
+     enddo
+    enddo
 */
 
     auto computeRotDiff = [im, lm, km](int dim, const DArray3 &b1, const DArray3 &b2, const DArray3 &j, double rh1, double rh2)
-    -> std::pair<double, Index3> {
+        -> std::pair<double, Index3> {
         const static Index3 i_start {0, 1, 1};
         const static Index3 l_start {1, 0, 1};
         const static Index3 k_start {1, 1, 0};
@@ -838,56 +645,82 @@ c===================================== rotB-j
         return std::make_pair(maxval, maxind);
     };
 
+    // The main program
+
+    Timer work_timer;
+
+    initHelicalCurrent(jx, jy, jz);
+    updateCurrent(jx, jy, jz);
+
+    int iter = 0;
+    double sx = 0.0, sy = 0.0, sz = 0.0;
+
+    do {
+        iter++;
+
+        sx = computeStep(ax, jx, im, lm + 1, km + 1);
+
+        computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13);
+        computeBoundaryX(ax, ay, az, im, im - 1, im, -c12, -c13);
+
+        copySliceZ(ax, 0, km, im + 1, lm + 2);
+        copySliceZ(ax, km + 1, 1, im + 1, lm + 2);
+
+        copySliceY(ax, 0, 1, im + 1, km + 2);
+        copySliceY(ax, lm + 1, lm, im + 1, km + 2);
+
+        sy = computeStep(ay, jy, im + 1, lm, km + 1);
+
+        computeBoundaryY(ax, ay, az, 0, 1, 1, c21, c23);
+        computeBoundaryY(ax, ay, az, lm, lm - 1, lm, -c21, -c23);
+
+        copySliceZ(ay, 0, km, im + 1, lm + 1);
+        copySliceZ(ay, km + 1, 1, im + 1, lm + 1);
+
+        copySliceX(ay, 0, 1, lm + 1, km + 2);
+        copySliceX(ay, im + 1, im, lm + 1, km + 2);
+
+        sz = computeStepZ(az, jz, im + 1, lm + 1, km);
+
+        copySliceZ(az, 0, km, im + 2, lm + 2);
+        copySliceZ(az, km+1, 1, im + 2, lm + 2);
+
+        if (screen_output) {
+            std::cout << iter << " " << sx << " " << sy << " " << sz << std::endl;
+        }
+    } while (sx > eps || sy > eps || sz > eps);
+
+    if (file_output) {
+        out_lst << "n,sx,sy,sz=" << formatI(iter) << formatS(sx) << formatS(sy) << formatS(sz) << std::endl;
+    }
+
+    computeB(0, az, ay, bx, rhy, rhz);
+    computeB(1, ax, az, by, rhz, rhx);
+    computeB(2, ay, ax, bz, rhx, rhy);
+
+    const auto mdj = computeDiv(jx, jy, jz, 1, 0, -1);
+    const auto mdb = computeDiv(bx, by, bz, 0, 1, 0);
+    const auto mda = computeDiv(ax, ay, az, 1, 0, -1);
+    outputMax("max(divj)=", mdj.first);
+    outputMax("max(divB)=", mdb.first);
+    outputMaxI("max(divA)=", mda.first, mda.second);
+
     const auto mrx = computeRotDiff(0, bz, by, jx, rhy, rhz);
-    outputMaxI("max(rotB_x-jx)=", mrx.first, mrx.second);
-
-/*
-      do k=2,km+1
-         do l=1,lm+1
-            do i=2,im+1
-               s4=(bx(i,l,k)-bx(i,l,k-1))/hz-
-     =            (bz(i,l,k)-bz(i-1,l,k))/hx-jy(i,l,k)
-               if(dabs(s4).gt.s2) then
-                  s2=s4
-                  i1=i
-                  l1=l
-                  k1=k
-               endif
-            enddo
-         enddo
-      enddo
-*/
-
     const auto mry = computeRotDiff(1, bx, bz, jy, rhz, rhx);
-    outputMaxI("max(rotB_y-jy)=", mry.first, mry.second);
-
-/*
-      do k=1,km+1
-         do l=2,lm+1
-            do i=2,im+1
-               s4=(by(i,l,k)-by(i-1,l,k))/hx-
-     =            (bx(i,l,k)-bx(i,l-1,k))/hy-jz(i,l,k)
-               if(dabs(s4).gt.s3) then
-                  s3=s4
-                  i1=i
-                  l1=l
-                  k1=k
-               endif
-            enddo
-         enddo
-      enddo
-*/
-
     const auto mrz = computeRotDiff(2, by, bx, jz, rhx, rhy);
+    outputMaxI("max(rotB_x-jx)=", mrx.first, mrx.second);
+    outputMaxI("max(rotB_y-jy)=", mry.first, mry.second);
     outputMaxI("max(rotB_z-jz)=", mrz.first, mrz.second);
 
-    auto te = std::chrono::steady_clock::now();
-    auto work_time = std::chrono::duration<double>(te - ts).count();
-    std::cout << "TIME: " << work_time << endl;
+    const auto work_time = work_timer.time();
 
     if (file_output) {
         out_lst.close();
     }
+
+    std::cout << "Im: " << im << ", Lm: " << lm << ", Km: " << km << ", Nm: " << nm << std::endl;
+    std::cout << "TIME: " << work_time << std::endl;
+    std::cout << "Iters: " << iter << std::endl;
 
     if (file_output) {
         outputDat("jx.dat", jx, im + 1, lm + 2, km + 2);

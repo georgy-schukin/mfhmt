@@ -6,10 +6,10 @@ CONFIG -= qt
 TARGET = mfhmt
 
 SOURCES +=   \
-    mfhmt.cpp \
-    output.cpp
+    ../common/output.cpp \
+    mfhmt.cpp
 
 HEADERS +=   \
+    ../common/output.h \
     array3d.h \
-    common.h \
-    output.h
+    defs.h
