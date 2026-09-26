@@ -11,5 +11,6 @@ SOURCES +=   \
 
 HEADERS +=   \
     ../common/output.h \
+    ../common/timer.h \
     array3d.h \
     defs.h

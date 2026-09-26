@@ -2,9 +2,11 @@
 #include "../common/output.h"
 #include "../common/timer.h"
 
+#include <string>
+#include <iostream>
+#include <fstream>
 #include <cmath>
 #include <tuple>
-#include <iostream>
 
 using namespace std;
 

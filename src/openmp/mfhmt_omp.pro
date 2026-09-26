@@ -6,15 +6,14 @@ CONFIG -= qt
 TARGET = mfhmt_omp
 
 SOURCES +=   \
-    mfhmt_omp.cpp \
-    output.cpp \
-    timer.cpp
+    ../common/output.cpp \
+    mfhmt_omp.cpp
 
 HEADERS +=   \
+    ../common/output.h \
+    ../common/timer.h \
     array3d.h \
-    common.h \
-    output.h \
-    timer.h
+    defs.h
 
 win32-msvc* {
     QMAKE_CXXFLAGS += /openmp
