@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.0...3.5)
+
+project(MFHMT_MPI CXX)
+
+find_package(MPI REQUIRED COMPONENTS CXX)
+
+add_executable(mfhmt_mpi
+    block_decomp.cpp
+    distributed_array2d.cpp
+    comm_util.cpp
+    mfhmt_mpi.cpp
+)
+
+target_link_libraries(mfhmt_mpi PRIVATE MPI::MPI_CXX)
+
+install(TARGETS mfhmt_mpi DESTINATION mpi)
