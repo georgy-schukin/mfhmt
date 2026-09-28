@@ -1,6 +1,10 @@
 #include "defs.h"
+#include "block_decomp.h"
+#include "distributed_array3d.h"
 #include "../common/output.h"
 #include "../common/timer.h"
+
+#include <mpi.h>
 
 #include <string>
 #include <iostream>
@@ -10,6 +14,8 @@
 
 using namespace std;
 
+using DDArray3 = DistributedArray3D;
+
 int main(int argc, char **argv) {
 
     const int IM_DEF = 40;
@@ -18,6 +24,12 @@ int main(int argc, char **argv) {
     const int NM_DEF = 1000;
     const int FOUT_DEF = 1;
     const int SOUT_DEF = 0;
+
+    int rank, size;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
 
     if (argc > 1) {
         const auto s = string(argv[1]);
@@ -30,6 +42,7 @@ int main(int argc, char **argv) {
                 " [file_output=" << FOUT_DEF << "]" <<
                 " [screen_output=" << SOUT_DEF << "]" <<
                 std::endl;
+            MPI_Finalize();
             return 0;
         }
     }
@@ -41,15 +54,16 @@ int main(int argc, char **argv) {
     const bool file_output = (argc > 5) ? stoi(argv[5]) : FOUT_DEF;
     const bool screen_output = (argc > 6) ? stoi(argv[6]) : SOUT_DEF;
 
+    MPI_Comm cart_comm;
+    std::array<int, 3> dims {0, 0, 0}, periods {0, 0, 0};
+    MPI_Dims_create(size, 3, dims.data());
+    MPI_Cart_create(MPI_COMM_WORLD, 3, dims.data(), periods.data(), 0, &cart_comm);
+
     const size_t ims = im + 2;
     const size_t lms = lm + 2;
     const size_t kms = km + 2;
 
-/*
-    real*8 jx(im+2,lm+2,km+2),jy(im+2,lm+2,km+2),jz(im+2,lm+2,km+2),
-    ax(im+2,lm+2,km+2),ay(im+2,lm+2,km+2),az(im+2,lm+2,km+2),
-    bx(im+2,lm+2,km+2),by(im+2,lm+2,km+2),bz(im+2,lm+2,km+2)
-*/
+    BlockDecomposition3D decomp3d(ims, dims[0], lms, dims[1], kms, dims[2]);
 
     DArray3 jx(ims, lms, kms), jy(ims, lms, kms), jz(ims, lms, kms);
     DArray3 ax(ims, lms, kms), ay(ims, lms, kms), az(ims, lms, kms);
@@ -83,44 +97,6 @@ int main(int argc, char **argv) {
 
     // Init functions
 
-/*
-    subroutine pqr(i,l,k,h1,h2,h3,x,y,z,x1,y1,z1,a)
-      parameter(im=40,lm=40,km=20)
-      real*8 p(im+2,lm+2,km+2),q(im+2,lm+2,km+2),r(im+2,lm+2,km+2)
-      integer i,l,k
-      real*8 h1,h2,h3,x,y,z,x1,y1,z1,a,
-     *dx,dy,dz,dx1,dy1,dz1,su,sv,sw,s1,s2,s3
-      common/j/p,q,r
-      dx=0.5*(x+x1)-h1*(i-1.5)
-      dy=0.5*(y+y1)-h2*(l-1.5)
-      dz=0.5*(z+z1)-h3*(k-1.5)
-      dx1=h1-dx
-      dy1=h2-dy
-      dz1=h3-dz
-      su=x1-x
-      sv=y1-y
-      sw=z1-z
-      s1=sv*sw/12.
-      s2=su*sw/12.
-      s3=su*sv/12.
-      su=su*a/(h2*h3)   !
-      sv=sv*a/(h1*h3)   !
-      sw=sw*a/(h1*h2)   !
-      p(i,l,k)=p(i,l,k)+su*(dy1*dz1+s1)
-      p(i,l,k+1)=p(i,l,k+1)+su*(dy1*dz-s1)
-      p(i,l+1,k)=p(i,l+1,k)+su*(dy*dz1-s1)
-      p(i,l+1,k+1)=p(i,l+1,k+1)+su*(dy*dz+s1)
-      q(i,l,k)=q(i,l,k)+sv*(dx1*dz1+s2)
-      q(i,l,k+1)=q(i,l,k+1)+sv*(dx1*dz-s2)
-      q(i+1,l,k)=q(i+1,l,k)+sv*(dx*dz1-s2)
-      q(i+1,l,k+1)=q(i+1,l,k+1)+sv*(dx*dz+s2)
-      r(i,l,k)=r(i,l,k)+sw*(dx1*dy1+s3)
-      r(i,l+1,k)=r(i,l+1,k)+sw*(dx1*dy-s3)
-      r(i+1,l,k)=r(i+1,l,k)+sw*(dx*dy1-s3)
-      r(i+1,l+1,k)=r(i+1,l+1,k)+sw*(dx*dy+s3)
-      return
-      end
-*/
     auto pqr = [hx, hy, hz, qj](DArray3 &p, DArray3 &q, DArray3 &r, int i, int l, int k, double x, double y, double z, double x1, double y1, double z1) {
         double dx = 0.5 * (x + x1) - hx * (i - 1.5);
         double dy = 0.5 * (y + y1) - hy * (l - 1.5);
@@ -155,88 +131,6 @@ int main(int argc, char **argv) {
         r(i+1,l+1,k) += sw * (dx * dy + s3);
     };
 
-/*
-    zadanie vintovogo toka
-
-      do k=1,km+2
-         do l=1,lm+2
-            do i=1,im+2
-               jx(i,l,k)=0.d0
-               jy(i,l,k)=0.d0
-               jz(i,l,k)=0.d0
-            enddo
-         enddo
-      enddo
-
-      x=x0+r0
-      y=y0
-      z=0.d0
-      do 111 n=1,nm
-      x1=x0+r0*dcos(c1*n)
-      y1=y0+r0*dsin(c1*n)
-      z1=h0*c1*n
-      s2=x/hx
-      i1=idint(s2+1.5)
-      s4=y/hy
-      l1=idint(s4+1.5)
-      s6=z/hz
-      k1=idint(s6+1.5)
-      s2=x1/hx
-      i2=idint(s2+1.5)
-      s4=y1/hy
-      l2=idint(s4+1.5)
-      s6=z1/hz
-      k2=idint(s6+1.5)
-      i=abs(i2-i1)
-      l=abs(l2-l1)
-      k=abs(k2-k1)
-      m=4*i+2*l+k
-      goto(1,2,3,4,5,6,7),m
-      call pqr(i1,l1,k1,hx,hy,hz,x,y,z,x1,y1,z1,qj)
-      goto 18
-    1 z2=hz*(0.5*(k1+k2)-1.)
-      s=(z2-z)/(z1-z)
-      x2=x+(x1-x)*s
-      y2=y+(y1-y)*s
-      goto 11
-    2 y2=hy*(0.5*(l1+l2)-1.)
-      s=(y2-y)/(y1-y)
-      x2=x+(x1-x)*s
-      z2=z+(z1-z)*s
-      goto 11
-    3 y2=hy*(0.5*(l1+l2)-1.)
-      z2=hz*(0.5*(k1+k2)-1.)
-      s=((z1-z)*(z2-z)+(y1-y)*(y2-y))/((z1-z)**2+(y1-y)**2)
-      x2=x+(x1-x)*s
-      goto 11
-    4 x2=hx*(0.5*(i1+i2)-1.)
-      s=(x2-x)/(x1-x)
-      y2=y+(y1-y)*s
-      z2=z+(z1-z)*s
-      goto 11
-    5 x2=hx*(0.5*(i1+i2)-1.)
-      z2=hz*(0.5*(k1+k2)-1.)
-      s=((z1-z)*(z2-z)+(x1-x)*(x2-x))/((z1-z)**2+(x1-x)**2)
-      y2=y+(y1-y)*s
-      goto 11
-    6 x2=hx*(0.5*(i1+i2)-1.)
-      y2=hy*(0.5*(l1+l2)-1.)
-      s=((y1-y)*(y2-y)+(x1-x)*(x2-x))/((y1-y)**2+(x1-x)**2)
-      z2=z+(z1-z)*s
-      goto 11
-    7 x2=hx*(0.5*(i1+i2)-1.)
-      y2=hy*(0.5*(l1+l2)-1.)
-      z2=hz*(0.5*(k1+k2)-1.)
-   11 call pqr(i1,l1,k1,hx,hy,hz,x,y,z,x2,y2,z2,qj)
-      call pqr(i2,l2,k2,hx,hy,hz,x2,y2,z2,x1,y1,z1,qj)
-   18 continue
-
-      x=x1
-      y=y1
-      z=z1
-
-  111 continue
-*/
     auto initHelicalCurrent = [x0, y0, r0, h0, nm, hx, hy, hz, rhx, rhy, rhz, c1, &pqr](DArray3 &jx, DArray3 &jy, DArray3 &jz) {
         double x = x0 + r0;
         double y = y0;
@@ -312,17 +206,6 @@ int main(int argc, char **argv) {
         }
     };
 
-/*
-    vychislenie vektornogo potentsiala
-
-    eps=1.d-10
-    c2=2.d0/hx**2+2.d0/hy**2+2.d0/hz**2
-    c12=hx/hy
-    c13=hx/hz
-    c21=hy/hx
-    c23=hy/hz
-*/
-
     const double hx2 = hx * hx;
     const double hy2 = hy * hy;
     const double hz2 = hz * hz;
@@ -369,25 +252,6 @@ int main(int argc, char **argv) {
         }
     };
 
-/*
-    do l=1,lm+2
-        do i=1,im+2
-            jx(i,l,2)=jx(i,l,2)+jx(i,l,km+2)
-            jx(i,l,km+1)=jx(i,l,km+1)+jx(i,l,1)
-            jx(i,l,1)=jx(i,l,km+1)
-            jx(i,l,km+2)=jx(i,l,2)
-
-            jy(i,l,2)=jy(i,l,2)+jy(i,l,km+2)
-            jy(i,l,km+1)=jy(i,l,km+1)+jy(i,l,1)
-            jy(i,l,1)=jy(i,l,km+1)
-            jy(i,l,km+2)=jy(i,l,2)
-
-            jz(i,l,km+1)=jz(i,l,km+1)+jz(i,l,1)
-            jz(i,l,1)=jz(i,l,km+1)
-        enddo
-    enddo
-*/
-
     auto updateCurrent = [im, lm, km, &addSliceZ, &copySliceZ](DArray3 &jx, DArray3 &jy, DArray3 &jz) {
         addSliceZ(jx, 1, km + 1, im + 2, lm + 2);
         addSliceZ(jx, km, 0, im + 2, lm + 2);
@@ -403,17 +267,6 @@ int main(int argc, char **argv) {
         copySliceZ(jz, 0, km, im + 2, lm + 2);
     };
 
-/*
-      do k=2,km+1
-         do l=2,lm+1
-            ax(1,l,k)=ax(2,l,k)+c12*(ay(2,l,k)-ay(2,l-1,k))+
-     =               c13*(az(2,l,k)-az(2,l,k-1))
-            ax(im+1,l,k)=ax(im,l,k)-c12*(ay(im+1,l,k)-ay(im+1,l-1,k))-
-     =               c13*(az(im+1,l,k)-az(im+1,l,k-1))
-         enddo
-      enddo
-*/
-
     auto computeBoundaryX = [im, lm, km](DArray3 &ax, DArray3 &ay, DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
         for (int l = 1; l < lm + 1; l++) {
             for (int k = 1; k < km + 1; k++) {
@@ -424,17 +277,6 @@ int main(int argc, char **argv) {
         }
     };
 
-/*
-      do k=2,km+1
-         do i=2,im+1
-            ay(i,1,k)=ay(i,2,k)+c21*(ax(i,2,k)-ax(i-1,2,k))+
-     =          c23*(az(i,2,k)-az(i,2,k-1))
-            ay(i,lm+1,k)=ay(i,lm,k)-c21*(ax(i,lm+1,k)-ax(i-1,lm+1,k))-
-     =          c23*(az(i,lm+1,k)-az(i,lm+1,k-1))
-         enddo
-      enddo
-*/
-
     auto computeBoundaryY = [im, lm, km](DArray3 &ax, DArray3 &ay, DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
         for (int i = 1; i < im + 1; i++) {
             for (int k = 1; k < km + 1; k++) {
@@ -444,22 +286,6 @@ int main(int argc, char **argv) {
             }
         }
     };
-
-/*
-      sx=0.d0
-      do k=2,km+1
-         do l=2,lm+1
-            do i=2,im
-               s=((ax(i+1,l,k)+ax(i-1,l,k))/hx**2+
-     =            (ax(i,l+1,k)+ax(i,l-1,k))/hy**2+
-     =            (ax(i,l,k+1)+ax(i,l,k-1))/hz**2+jx(i,l,k))/c2
-               s2=dabs(ax(i,l,k)-s)
-               if(s2.gt.sx) sx=s2
-               ax(i,l,k)=s
-            enddo
-         enddo
-      enddo
-*/
 
     auto computeStep = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
@@ -476,29 +302,6 @@ int main(int argc, char **argv) {
         }
         return maxdiff;
     };
-
-/*
-      sz=0.d0
-      do l=2,lm+1
-         do i=2,im+1
-            do k=2,km
-               s=((az(i+1,l,k)+az(i-1,l,k))/hx**2+
-     =            (az(i,l+1,k)+az(i,l-1,k))/hy**2+
-     =            (az(i,l,k+1)+az(i,l,k-1))/hz**2+jz(i,l,k))/c2
-               s2=dabs(az(i,l,k)-s)
-               if(s2.gt.sz) sz=s2
-               az(i,l,k)=s
-            enddo
-            s=((az(i+1,l,km+1)+az(i-1,l,km+1))/hx**2+
-     =         (az(i,l+1,km+1)+az(i,l-1,km+1))/hy**2+
-     =         (az(i,l,2)+az(i,l,km))/hz**2+jz(i,l,km+1))/c2
-            s2=dabs(az(i,l,km+1)-s)
-            if(s2.gt.sz) sz=s2
-            az(i,l,km+1)=s
-            az(i,l,1)=s
-         enddo
-      enddo
-*/
 
     auto computeStepZ = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
@@ -522,17 +325,6 @@ int main(int argc, char **argv) {
         return maxdiff;
     };
 
-/*
-      do k=1,km+1
-         do l=1,lm+1
-            do i=1,im+2
-               bx(i,l,k)=(az(i,l+1,k)-az(i,l,k))/hy-
-     =                   (ay(i,l,k+1)-ay(i,l,k))/hz
-            enddo
-         enddo
-      enddo
-*/
-
     auto computeB = [im, lm, km](int dim, const DArray3 &a1, const DArray3 &a2, DArray3 &b, double rh1, double rh2) {
         const static Index3 i_end {2, 1, 1};
         const static Index3 l_end {1, 2, 1};
@@ -552,31 +344,17 @@ int main(int argc, char **argv) {
         }
     };
 
-    auto outputMax = [&file_output, &out_lst](const std::string &str, double m) {
-        if (file_output) {
+    auto outputMax = [&file_output, &out_lst, rank](const std::string &str, double m) {
+        if (file_output && rank == 0) {
             out_lst << str << formatS(m) << std::endl;
         }
     };
 
-    auto outputMaxI = [&file_output, &out_lst](const std::string &str, double m, const std::array<int, 3> &ind) {
-        if (file_output) {
+    auto outputMaxI = [&file_output, &out_lst, rank](const std::string &str, double m, const std::array<int, 3> &ind) {
+        if (file_output && rank == 0) {
             out_lst << str << formatS(m) << formatI(ind[0] + 1) << formatI(ind[1] + 1) << formatI(ind[2] + 1) << std::endl;
         }
     };
-
-/*
-      s=0.d0
-      do k=2,km+1
-         do l=2,lm+1
-            do i=2,im+1
-               s1=(jx(i,l,k)-jx(i-1,l,k))/hx+
-     =            (jy(i,l,k)-jy(i,l-1,k))/hy+
-     =            (jz(i,l,k)-jz(i,l,k-1))/hz
-               if(dabs(s1).gt.s) s=s1
-            enddo
-         enddo
-      enddo
-*/
 
     auto computeDiv = [im, lm, km, rhx, rhy, rhz](const DArray3 &x, const DArray3 &y, const DArray3 &z, int start, int shift1, int shift2)
         -> std::pair<double, Index3> {
@@ -597,28 +375,6 @@ int main(int argc, char **argv) {
         }
         return std::make_pair(maxval, maxind);
     };
-
-/*
-    s1=0.d0
-    s2=0.d0
-    s3=0.d0
-
-    do k=2,km+1
-     do l=2,lm+1
-        do i=1,im+1
-           s4=(bz(i,l,k)-bz(i,l-1,k))/hy-
-    =            (by(i,l,k)-by(i,l,k-1))/hz-jx(i,l,k)
-           s=dabs(s4)
-           if(s.gt.s1) then
-              s1=s4
-              i1=i
-              l1=l
-              k1=k
-           endif
-        enddo
-     enddo
-    enddo
-*/
 
     auto computeRotDiff = [im, lm, km](int dim, const DArray3 &b1, const DArray3 &b2, const DArray3 &j, double rh1, double rh2)
         -> std::pair<double, Index3> {
@@ -692,7 +448,7 @@ int main(int argc, char **argv) {
         }
     } while (sx > eps || sy > eps || sz > eps);
 
-    if (file_output) {
+    if (file_output && rank == 0) {
         out_lst << "n,sx,sy,sz=" << formatI(iter) << formatS(sx) << formatS(sy) << formatS(sz) << std::endl;
     }
 
@@ -735,6 +491,8 @@ int main(int argc, char **argv) {
         outputDat("by.dat", by, im + 1, lm + 2, km + 1);
         outputDat("bz.dat", bz, im + 1, lm + 1, km + 2);
     }
+
+    MPI_Finalize();
 
     return 0;
 }
