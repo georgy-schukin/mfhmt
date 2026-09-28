@@ -16,6 +16,7 @@ exists(local.pri) {
 SOURCES +=   \
     ../common/output.cpp \
     block_decomp.cpp \
+    comm_util.cpp \
     distributed_array3d.cpp \
     mfhmt_mpi.cpp
 
@@ -23,6 +24,7 @@ HEADERS += \
     ../common/output.h \
     ../common/timer.h \
     block_decomp.h \
+    comm_util.h \
     defs.h \
     distributed_array3d.h \
     shadowed_array3d.h

@@ -5,23 +5,18 @@
 #include "defs.h"
 #include "block_decomp.h"
 
-MPI_Datatype makeColType(const DArray2 &array);
-MPI_Datatype makeRowType(const DArray2 &array);
-MPI_Datatype makeRowType(int block_size, int extent);
 MPI_Datatype makeDataVectorType(int num_of_blocks, int block_size, int stride, int extent = -1);
-MPI_Datatype makeDataVectorType(const DArray2 &array);
+MPI_Datatype makeSliceXType(const DArray3 &array);
+MPI_Datatype makeSliceYType(const DArray3 &array);
+MPI_Datatype makeSliceZType(const DArray3 &array);
+MPI_Datatype makeDataBlockType(const DArray3 &array);
 
-void syncShadowsColsPrev(DArray2 &arr, MPI_Datatype col_type, int rank, int size);
-void syncShadowsColsNext(DArray2 &arr, MPI_Datatype col_type, int rank, int size);
-void syncShadowsRowsPrev(DArray2 &arr, MPI_Datatype row_type, int rank, int size);
-void syncShadowsRowsNext(DArray2 &arr, MPI_Datatype row_type, int rank, int size);
-void syncShadowsCols(DArray2 &arr, MPI_Datatype col_type, int rank, int size);
-void syncShadowsRows(DArray2 &arr, MPI_Datatype row_type, int rank, int size);
+void syncShadowsXPrev(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank);
+void syncShadowsXNext(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank);
+void syncShadowsYPrev(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank);
+void syncShadowsYNext(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank);
+void syncShadowsZPrev(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank);
+void syncShadowsZNext(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank);
 
-DArray2 gatherArrayCols(const DArray2 &local_data, const BlockDecomposition &cols_decomp, int rank, int size, int root = 0);
-DArray2 scatterArrayCols(const DArray2 &data, int size_x, const BlockDecomposition &cols_decomp, int shadow_x, int shadow_y, int rank, int size, int root = 0);
+DArray3 gatherArray(const DArray3 &local_data, const BlockDecomposition3D &decomp, int rank, int size, int root = 0);
 
-void combineRowsFromCols(const DArray2 &src, DArray2 &dst, const BlockDecomposition &rows_decomp, const BlockDecomposition &cols_decomp, int rank, int size);
-void combineColsFromRows(const DArray2 &src, DArray2 &dst, const BlockDecomposition &cols_decomp, const BlockDecomposition &rows_decomp, int rank, int size);
-
-MPI_Op makeVectorSumOp();

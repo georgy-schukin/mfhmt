@@ -65,9 +65,9 @@ int main(int argc, char **argv) {
 
     BlockDecomposition3D decomp3d(ims, dims[0], lms, dims[1], kms, dims[2]);
 
-    DArray3 jx(ims, lms, kms), jy(ims, lms, kms), jz(ims, lms, kms);
-    DArray3 ax(ims, lms, kms), ay(ims, lms, kms), az(ims, lms, kms);
-    DArray3 bx(ims, lms, kms), by(ims, lms, kms), bz(ims, lms, kms);
+    DDArray3 jx(decomp3d, cart_comm), jy(decomp3d, cart_comm), jz(decomp3d, cart_comm);
+    DDArray3 ax(decomp3d, cart_comm), ay(decomp3d, cart_comm), az(decomp3d, cart_comm);
+    DDArray3 bx(decomp3d, cart_comm), by(decomp3d, cart_comm), bz(decomp3d, cart_comm);
 
     const double qj = 10.0;
     const double pi = 3.14159265358979;
@@ -97,7 +97,16 @@ int main(int argc, char **argv) {
 
     // Init functions
 
-    auto pqr = [hx, hy, hz, qj](DArray3 &p, DArray3 &q, DArray3 &r, int i, int l, int k, double x, double y, double z, double x1, double y1, double z1) {
+    auto gatherAndOutput = [rank, file_output](const std::string &filename, const DDArray3 &arr, int sx, int sy, int sz) {
+        if (file_output) {
+            auto gathered = arr.gather(0);
+            if (rank == 0) {
+                outputDat(filename, gathered, sx, sy, sz);
+            }
+        }
+    };
+
+    auto pqr = [hx, hy, hz, qj](DDArray3 &p, DDArray3 &q, DDArray3 &r, int i, int l, int k, double x, double y, double z, double x1, double y1, double z1) {
         double dx = 0.5 * (x + x1) - hx * (i - 1.5);
         double dy = 0.5 * (y + y1) - hy * (l - 1.5);
         double dz = 0.5 * (z + z1) - hz * (k - 1.5);
@@ -131,7 +140,7 @@ int main(int argc, char **argv) {
         r(i+1,l+1,k) += sw * (dx * dy + s3);
     };
 
-    auto initHelicalCurrent = [x0, y0, r0, h0, nm, hx, hy, hz, rhx, rhy, rhz, c1, &pqr](DArray3 &jx, DArray3 &jy, DArray3 &jz) {
+    auto initHelicalCurrent = [x0, y0, r0, h0, nm, hx, hy, hz, rhx, rhy, rhz, c1, &pqr](DDArray3 &jx, DDArray3 &jy, DDArray3 &jz) {
         double x = x0 + r0;
         double y = y0;
         double z = 0.0;
@@ -220,7 +229,7 @@ int main(int argc, char **argv) {
     const double c21 = hy / hx;
     const double c23 = hy / hz;
 
-    auto copySliceX = [](DArray3 &arr, int dst, int src, int lend, int kend) {
+    auto copySliceX = [](DDArray3 &arr, int dst, int src, int lend, int kend) {
         for (int l = 0; l < lend; l++) {
             for (int k = 0; k < kend; k++) {
                 arr(dst, l, k) = arr(src, l, k);
@@ -228,7 +237,7 @@ int main(int argc, char **argv) {
         }
     };
 
-    auto copySliceY = [](DArray3 &arr, int dst, int src, int iend, int kend) {
+    auto copySliceY = [](DDArray3 &arr, int dst, int src, int iend, int kend) {
         for (int i = 0; i < iend; i++) {
             for (int k = 0; k < kend; k++) {
                 arr(i, dst, k) = arr(i, src, k);
@@ -236,7 +245,7 @@ int main(int argc, char **argv) {
         }
     };
 
-    auto copySliceZ = [](DArray3 &arr, int dst, int src, int iend, int lend) {
+    auto copySliceZ = [](DDArray3 &arr, int dst, int src, int iend, int lend) {
         for (int i = 0; i < iend; i++) {
             for (int l = 0; l < lend; l++) {
                 arr(i, l, dst) = arr(i, l, src);
@@ -244,7 +253,7 @@ int main(int argc, char **argv) {
         }
     };
 
-    auto addSliceZ = [](DArray3 &arr, int dst, int src, int iend, int lend) {
+    auto addSliceZ = [](DDArray3 &arr, int dst, int src, int iend, int lend) {
         for (int i = 0; i < iend; i++) {
             for (int l = 0; l < lend; l++) {
                 arr(i, l, dst) += arr(i, l, src);
@@ -252,7 +261,7 @@ int main(int argc, char **argv) {
         }
     };
 
-    auto updateCurrent = [im, lm, km, &addSliceZ, &copySliceZ](DArray3 &jx, DArray3 &jy, DArray3 &jz) {
+    auto updateCurrent = [im, lm, km, &addSliceZ, &copySliceZ](DDArray3 &jx, DDArray3 &jy, DDArray3 &jz) {
         addSliceZ(jx, 1, km + 1, im + 2, lm + 2);
         addSliceZ(jx, km, 0, im + 2, lm + 2);
         copySliceZ(jx, 0, km, im + 2, lm + 2);
@@ -267,7 +276,7 @@ int main(int argc, char **argv) {
         copySliceZ(jz, 0, km, im + 2, lm + 2);
     };
 
-    auto computeBoundaryX = [im, lm, km](DArray3 &ax, DArray3 &ay, DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
+    auto computeBoundaryX = [im, lm, km](DDArray3 &ax, DDArray3 &ay, DDArray3 &az, int dst, int src1, int src2, double c1, double c2) {
         for (int l = 1; l < lm + 1; l++) {
             for (int k = 1; k < km + 1; k++) {
                 ax(dst, l, k) = ax(src1, l, k) +
@@ -277,7 +286,7 @@ int main(int argc, char **argv) {
         }
     };
 
-    auto computeBoundaryY = [im, lm, km](DArray3 &ax, DArray3 &ay, DArray3 &az, int dst, int src1, int src2, double c1, double c2) {
+    auto computeBoundaryY = [im, lm, km](DDArray3 &ax, DDArray3 &ay, DDArray3 &az, int dst, int src1, int src2, double c1, double c2) {
         for (int i = 1; i < im + 1; i++) {
             for (int k = 1; k < km + 1; k++) {
                 ay(i, dst, k) = ay(i, src1, k) +
@@ -287,7 +296,7 @@ int main(int argc, char **argv) {
         }
     };
 
-    auto computeStep = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
+    auto computeStep = [rhx2, rhy2, rhz2, rc2](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
         for (int k = 1; k < kend; k++) {
             for (int l = 1; l < lend; l++) {
@@ -303,7 +312,7 @@ int main(int argc, char **argv) {
         return maxdiff;
     };
 
-    auto computeStepZ = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
+    auto computeStepZ = [rhx2, rhy2, rhz2, rc2](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
         for (int l = 1; l < lend; l++) {
             for (int i = 1; i < iend; i++) {
@@ -325,7 +334,7 @@ int main(int argc, char **argv) {
         return maxdiff;
     };
 
-    auto computeB = [im, lm, km](int dim, const DArray3 &a1, const DArray3 &a2, DArray3 &b, double rh1, double rh2) {
+    auto computeB = [im, lm, km](int dim, const DDArray3 &a1, const DDArray3 &a2, DDArray3 &b, double rh1, double rh2) {
         const static Index3 i_end {2, 1, 1};
         const static Index3 l_end {1, 2, 1};
         const static Index3 k_end {1, 1, 2};
@@ -356,7 +365,7 @@ int main(int argc, char **argv) {
         }
     };
 
-    auto computeDiv = [im, lm, km, rhx, rhy, rhz](const DArray3 &x, const DArray3 &y, const DArray3 &z, int start, int shift1, int shift2)
+    auto computeDiv = [im, lm, km, rhx, rhy, rhz](const DDArray3 &x, const DDArray3 &y, const DDArray3 &z, int start, int shift1, int shift2)
         -> std::pair<double, Index3> {
         double maxval = 0.0;
         Index3 maxind {0, 0, 0};
@@ -376,7 +385,7 @@ int main(int argc, char **argv) {
         return std::make_pair(maxval, maxind);
     };
 
-    auto computeRotDiff = [im, lm, km](int dim, const DArray3 &b1, const DArray3 &b2, const DArray3 &j, double rh1, double rh2)
+    auto computeRotDiff = [im, lm, km](int dim, const DDArray3 &b1, const DDArray3 &b2, const DDArray3 &j, double rh1, double rh2)
         -> std::pair<double, Index3> {
         const static Index3 i_start {0, 1, 1};
         const static Index3 l_start {1, 0, 1};
@@ -480,17 +489,15 @@ int main(int argc, char **argv) {
     std::cout << "TIME: " << work_time << std::endl;
     std::cout << "Iters: " << iter << std::endl;
 
-    if (file_output) {
-        outputDat("jx.dat", jx, im + 1, lm + 2, km + 2);
-        outputDat("jy.dat", jy, im + 2, lm + 1, km + 2);
-        outputDat("jz.dat", jz, im + 2, lm + 2, km + 1);
-        outputDat("ax.dat", ax, im + 1, lm + 2, km + 2);
-        outputDat("ay.dat", ay, im + 2, lm + 1, km + 2);
-        outputDat("az.dat", az, im + 2, lm + 2, km + 1);
-        outputDat("bx.dat", bx, im + 2, lm + 1, km + 1);
-        outputDat("by.dat", by, im + 1, lm + 2, km + 1);
-        outputDat("bz.dat", bz, im + 1, lm + 1, km + 2);
-    }
+    gatherAndOutput("jx.dat", jx, im + 1, lm + 2, km + 2);
+    gatherAndOutput("jy.dat", jy, im + 2, lm + 1, km + 2);
+    gatherAndOutput("jz.dat", jz, im + 2, lm + 2, km + 1);
+    gatherAndOutput("ax.dat", ax, im + 1, lm + 2, km + 2);
+    gatherAndOutput("ay.dat", ay, im + 2, lm + 1, km + 2);
+    gatherAndOutput("az.dat", az, im + 2, lm + 2, km + 1);
+    gatherAndOutput("bx.dat", bx, im + 2, lm + 1, km + 1);
+    gatherAndOutput("by.dat", by, im + 1, lm + 2, km + 1);
+    gatherAndOutput("bz.dat", bz, im + 1, lm + 1, km + 2);
 
     MPI_Finalize();
 

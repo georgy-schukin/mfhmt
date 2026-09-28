@@ -5,10 +5,12 @@
 
 #include <mpi.h>
 
+#include <array>
+
 class DistributedArray3D {
 public:
     DistributedArray3D() {}
-    DistributedArray3D(const BlockDecomposition3D &decomp, MPI_Comm cart_comm, int shadow_x = 0, int shadow_y = 0, int shadow_z = 0);
+    DistributedArray3D(const BlockDecomposition3D &decomp, MPI_Comm cart_comm);
 
     double* data() {
         return _data.data();
@@ -91,6 +93,13 @@ public:
 
     void syncShadows(int dim);
     void syncShadows();
+
+    DArray3 gather(int dst_rank) const;
+
+private:
+    int getShadowSize(const BlockDecomposition &dec) const {
+        return dec.numOfBlocks() > 1 ? 1 : 0;
+    }
 
 private:
     DArray3 _data;
