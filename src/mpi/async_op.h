@@ -13,10 +13,17 @@ public:
             request(req) {
         }
         ~Request() {
-            MPI_Wait(&request, MPI_STATUS_IGNORE);
+            wait();
+        }
+        void wait() {
+            if (!finished) {
+                MPI_Wait(&request, MPI_STATUS_IGNORE);
+                finished = true;
+            }
         }
     private:
         MPI_Request request;
+        bool finished = false;
     };
 
 public:
@@ -27,6 +34,7 @@ public:
 
     void wait() {
         if (req_handle) {
+            req_handle->wait();
             req_handle = nullptr;
         }
     }

@@ -97,6 +97,8 @@ public:
     AsyncOps syncShadowsPrev(size_t dim);
     AsyncOps syncShadowsNext(size_t dim);
     AsyncOps syncShadows();
+    AsyncOps syncShadowsPrev();
+    AsyncOps syncShadowsNext();
 
     DArray3 gather(int dst_rank) const;
 

@@ -24,6 +24,22 @@ AsyncOps DistributedArray3D::syncShadows() {
     return ops;
 }
 
+AsyncOps DistributedArray3D::syncShadowsPrev() {
+    AsyncOps ops;
+    ops.add(syncShadowsPrev(0));
+    ops.add(syncShadowsPrev(1));
+    ops.add(syncShadowsPrev(2));
+    return ops;
+}
+
+AsyncOps DistributedArray3D::syncShadowsNext() {
+    AsyncOps ops;
+    ops.add(syncShadowsNext(0));
+    ops.add(syncShadowsNext(1));
+    ops.add(syncShadowsNext(2));
+    return ops;
+}
+
 AsyncOps DistributedArray3D::syncShadowsPrev(size_t dim) {
     AsyncOps ops;
     // Recv shadow from prev rank
