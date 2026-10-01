@@ -24,6 +24,7 @@ HEADERS += \
     ../common/output.h \
     ../common/timer.h \
     block_decomp.h \
+    cart_topology.h \
     comm_util.h \
     defs.h \
     distributed_array3d.h \

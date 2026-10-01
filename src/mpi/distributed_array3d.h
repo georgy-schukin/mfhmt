@@ -2,6 +2,7 @@
 
 #include "defs.h"
 #include "block_decomp.h"
+#include "cart_topology.h"
 
 #include <mpi.h>
 
@@ -9,8 +10,8 @@
 
 class DistributedArray3D {
 public:
-    DistributedArray3D() {}
-    DistributedArray3D(const BlockDecomposition3D &decomp, MPI_Comm cart_comm);
+    //DistributedArray3D() {}
+    DistributedArray3D(const BlockDecomposition3D &decomp, const CartTopology<3> &tp);
 
     double* data() {
         return _data.data();
@@ -76,7 +77,7 @@ public:
     }
 
     int rank() const {
-        return _rank;
+        return _topology.thisRank();
     }
 
     const Index3 &index() const {
@@ -91,7 +92,7 @@ public:
         return _data;
     }
 
-    void syncShadows(int dim);
+    void syncShadows(size_t dim);
     void syncShadows();
 
     DArray3 gather(int dst_rank) const;
@@ -103,9 +104,8 @@ private:
 
 private:
     DArray3 _data;
-    BlockDecomposition3D _decomp;
+    const BlockDecomposition3D &_decomp;
+    const CartTopology<3> &_topology;
     std::array<BlockDecomposition::Range, 3> _ranges;
-    MPI_Comm _comm;
-    int _rank;
     Index3 _index;
 };

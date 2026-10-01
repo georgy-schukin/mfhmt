@@ -1,6 +1,7 @@
 #include "defs.h"
 #include "block_decomp.h"
 #include "distributed_array3d.h"
+#include "cart_topology.h"
 #include "../common/output.h"
 #include "../common/timer.h"
 
@@ -54,20 +55,17 @@ int main(int argc, char **argv) {
     const bool file_output = (argc > 5) ? stoi(argv[5]) : FOUT_DEF;
     const bool screen_output = (argc > 6) ? stoi(argv[6]) : SOUT_DEF;
 
-    MPI_Comm cart_comm;
-    std::array<int, 3> dims {0, 0, 0}, periods {0, 0, 0};
-    MPI_Dims_create(size, 3, dims.data());
-    MPI_Cart_create(MPI_COMM_WORLD, 3, dims.data(), periods.data(), 0, &cart_comm);
+    CartTopology<3> cart_tp(rank, size);
 
     const size_t ims = im + 2;
     const size_t lms = lm + 2;
     const size_t kms = km + 2;
 
-    BlockDecomposition3D decomp3d(ims, dims[0], lms, dims[1], kms, dims[2]);
+    BlockDecomposition3D decomp3d(ims, cart_tp.dim(0), lms, cart_tp.dim(1), kms, cart_tp.dim(2));
 
-    DDArray3 jx(decomp3d, cart_comm), jy(decomp3d, cart_comm), jz(decomp3d, cart_comm);
-    DDArray3 ax(decomp3d, cart_comm), ay(decomp3d, cart_comm), az(decomp3d, cart_comm);
-    DDArray3 bx(decomp3d, cart_comm), by(decomp3d, cart_comm), bz(decomp3d, cart_comm);
+    DDArray3 jx(decomp3d, cart_tp), jy(decomp3d, cart_tp), jz(decomp3d, cart_tp);
+    DDArray3 ax(decomp3d, cart_tp), ay(decomp3d, cart_tp), az(decomp3d, cart_tp);
+    DDArray3 bx(decomp3d, cart_tp), by(decomp3d, cart_tp), bz(decomp3d, cart_tp);
 
     const double qj = 10.0;
     const double pi = 3.14159265358979;
