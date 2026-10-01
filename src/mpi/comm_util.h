@@ -4,6 +4,7 @@
 
 #include "defs.h"
 #include "block_decomp.h"
+#include "async_op.h"
 
 MPI_Datatype makeVectorType(MPI_Datatype src_type, int num_of_blocks, int block_size, MPI_Aint stride, int extent);
 MPI_Datatype makeVectorType(int num_of_blocks, int block_size, int stride, int extent = -1);
@@ -15,12 +16,7 @@ MPI_Datatype makeSliceYType(const DArray3 &array);
 MPI_Datatype makeSliceZType(const DArray3 &array);
 MPI_Datatype makeDataBlockType(const DArray3 &array);
 
-void syncShadowsXPrev(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank);
-void syncShadowsXNext(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank);
-void syncShadowsYPrev(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank);
-void syncShadowsYNext(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank);
-void syncShadowsZPrev(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank);
-void syncShadowsZNext(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank);
+AsyncOp sendSlice(DArray3 &arr, const Index3 &src_index, MPI_Datatype slice_type, int neigh_rank, MPI_Comm comm);
+AsyncOp recvSlice(DArray3 &arr, const Index3 &dst_index, MPI_Datatype slice_type, int neigh_rank, MPI_Comm comm);
 
 DArray3 gatherArray(const DArray3 &local_data, const BlockDecomposition3D &decomp, int rank, int size, int root = 0);
-

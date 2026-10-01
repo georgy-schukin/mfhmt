@@ -23,6 +23,7 @@ SOURCES +=   \
 HEADERS += \
     ../common/output.h \
     ../common/timer.h \
+    async_op.h \
     block_decomp.h \
     cart_topology.h \
     comm_util.h \

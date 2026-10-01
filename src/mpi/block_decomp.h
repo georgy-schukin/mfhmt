@@ -35,6 +35,7 @@ public:
     int localStart(int index, int block_index) const;
     int localEnd(int index, int block_index) const;
     int toGlobal(int index, int block_index) const;
+    int blockIndexFor(int index) const;
 
     Range range(int block_index) const;
 

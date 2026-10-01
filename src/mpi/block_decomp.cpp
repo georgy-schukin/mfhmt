@@ -89,6 +89,15 @@ int BlockDecomposition::toGlobal(int index, int block_index) const {
     return index + blockShift(block_index);
 }
 
+int BlockDecomposition::blockIndexFor(int index) const {
+    for (int i = 0; i < numOfBlocks(); i++) {
+        if (range(i).hasIndex(index)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 BlockDecomposition::Range BlockDecomposition::range(int block_index) const {
     return BlockDecomposition::Range(blockShift(block_index), blockShift(block_index) + blockSize(block_index));
 }

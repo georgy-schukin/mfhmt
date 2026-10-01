@@ -6,10 +6,9 @@
 namespace {
 
 enum Tags: int {
-    TAG_PREV = 0,
-    TAG_NEXT = 1,
-    TAG_GATHER = 2,
-    TAG_SCATTER = 3
+    TAG_SLICE = 0,
+    TAG_GATHER,
+    TAG_SCATTER
 };
 
 }
@@ -74,111 +73,17 @@ MPI_Datatype makeDataBlockType(const DArray3 &array) {
     return data_block_type;
 }
 
-void syncShadowsXPrev(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank) {
-
+AsyncOp sendSlice(DArray3 &arr, const Index3 &src_index, MPI_Datatype slice_type, int neigh_rank, MPI_Comm comm) {
+    MPI_Request req;
+    MPI_Isend(&arr(src_index[0], src_index[1], src_index[2]), 1, slice_type, neigh_rank, TAG_SLICE, comm, &req);
+    return AsyncOp(req);
 }
 
-void syncShadowsXNext(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank) {
-
+AsyncOp recvSlice(DArray3 &arr, const Index3 &dst_index, MPI_Datatype slice_type, int neigh_rank, MPI_Comm comm) {
+    MPI_Request req;
+    MPI_Irecv(&arr(dst_index[0], dst_index[1], dst_index[2]), 1, slice_type, neigh_rank, TAG_SLICE, comm, &req);
+    return AsyncOp(req);
 }
-
-void syncShadowsYPrev(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank) {
-
-}
-
-void syncShadowsYNext(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank) {
-
-}
-
-void syncShadowsZPrev(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank) {
-
-}
-
-void syncShadowsZNext(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank) {
-
-}
-
-/*void syncShadowsColsPrev(DArray2 &arr, MPI_Datatype col_type, int rank, int size) {
-    MPI_Request r1, r2;
-    if (rank > 0) {
-        // Recv in shadow from prev.
-        MPI_Irecv(&arr.raw(arr.shadowSize(0), size_t(0)), 1, col_type, rank - 1, TAG_PREV, MPI_COMM_WORLD, &r1);
-    }
-    if (rank < size - 1) {
-        // Send data column to next.
-        MPI_Isend(&arr(size_t(0), arr.size(1) - 1), 1, col_type, rank + 1, TAG_PREV, MPI_COMM_WORLD, &r2);
-    }
-    if (rank > 0) {
-        MPI_Wait(&r1, MPI_STATUS_IGNORE);
-    }
-    if (rank < size - 1) {
-        MPI_Wait(&r2, MPI_STATUS_IGNORE);
-    }
-}
-
-void syncShadowsColsNext(DArray2 &arr, MPI_Datatype col_type, int rank, int size) {
-    MPI_Request r1, r2;
-    if (rank < size - 1) {
-        // Recv in shadow from next.
-        MPI_Irecv(&arr.raw(arr.shadowSize(0), arr.fullSize(1) - 1), 1, col_type, rank + 1, TAG_NEXT, MPI_COMM_WORLD, &r1);
-    }
-    if (rank > 0) {
-        // Send data column to prev.
-        MPI_Isend(&arr(0, 0), 1, col_type, rank - 1, TAG_NEXT, MPI_COMM_WORLD, &r2);
-    }
-    if (rank < size - 1) {
-        MPI_Wait(&r1, MPI_STATUS_IGNORE);
-    }
-    if (rank > 0) {
-        MPI_Wait(&r2, MPI_STATUS_IGNORE);
-    }
-}
-
-void syncShadowsRowsPrev(DArray2 &arr, MPI_Datatype row_type, int rank, int size) {
-    MPI_Request r1, r2;
-    if (rank > 0) {
-        // Recv in shadow from prev.
-        MPI_Irecv(&arr.raw(size_t(0), arr.shadowSize(1)), 1, row_type, rank - 1, TAG_PREV, MPI_COMM_WORLD, &r1);
-    }
-    if (rank < size - 1) {
-        // Send data row to next.
-        MPI_Isend(&arr(arr.size(0) - 1, size_t(0)), 1, row_type, rank + 1, TAG_PREV, MPI_COMM_WORLD, &r2);
-    }
-    if (rank > 0) {
-        MPI_Wait(&r1, MPI_STATUS_IGNORE);
-    }
-    if (rank < size - 1) {
-        MPI_Wait(&r2, MPI_STATUS_IGNORE);
-    }
-}
-
-void syncShadowsRowsNext(DArray2 &arr, MPI_Datatype row_type, int rank, int size) {
-    MPI_Request r1, r2;
-    if (rank < size - 1) {
-        // Recv in shadow from next.
-        MPI_Irecv(&arr.raw(arr.fullSize(0) - 1, arr.shadowSize(1)), 1, row_type, rank + 1, TAG_NEXT, MPI_COMM_WORLD, &r1);
-    }
-    if (rank > 0) {
-        // Send data row to prev.
-        MPI_Isend(&arr(0, 0), 1, row_type, rank - 1, TAG_NEXT, MPI_COMM_WORLD, &r2);
-    }
-    if (rank < size - 1) {
-        MPI_Wait(&r1, MPI_STATUS_IGNORE);
-    }
-    if (rank > 0) {
-        MPI_Wait(&r2, MPI_STATUS_IGNORE);
-    }
-}
-
-void syncShadowsCols(DArray2 &arr, MPI_Datatype col_type, int rank, int size) {
-    syncShadowsColsPrev(arr, col_type, rank, size);
-    syncShadowsColsNext(arr, col_type, rank, size);
-}
-
-void syncShadowsRows(DArray2 &arr, MPI_Datatype row_type, int rank, int size) {
-    syncShadowsRowsPrev(arr, row_type, rank, size);
-    syncShadowsRowsNext(arr, row_type, rank, size);
-}*/
 
 DArray3 gatherArray(const DArray3 &local_data, const BlockDecomposition3D &decomp, int rank, int size, int root) {
 

@@ -52,7 +52,7 @@ public:
         return rankFromCoord(neigh_coord);
     }
 
-    int rankFromCoord(const std::array<int, Dims> &coord) {
+    int rankFromCoord(const std::array<int, Dims> &coord) const {
         int rank;
         MPI_Cart_rank(_cart_comm, coord.data(), &rank);
         return rank;

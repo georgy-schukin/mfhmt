@@ -3,6 +3,7 @@
 #include "defs.h"
 #include "block_decomp.h"
 #include "cart_topology.h"
+#include "async_op.h"
 
 #include <mpi.h>
 
@@ -68,11 +69,11 @@ public:
         return _data.end();
     }
 
-    const BlockDecomposition& decomp(int dim) const {
+    const BlockDecomposition& decomp(size_t dim) const {
         return _decomp.decomp(dim);
     }
 
-    const BlockDecomposition::Range& range(int dim) const {
+    const BlockDecomposition::Range& range(size_t dim) const {
         return _ranges[dim];
     }
 
@@ -92,8 +93,10 @@ public:
         return _data;
     }
 
-    void syncShadows(size_t dim);
-    void syncShadows();
+    AsyncOps syncShadows(size_t dim);
+    AsyncOps syncShadowsPrev(size_t dim);
+    AsyncOps syncShadowsNext(size_t dim);
+    AsyncOps syncShadows();
 
     DArray3 gather(int dst_rank) const;
 
@@ -108,4 +111,5 @@ private:
     const CartTopology<3> &_topology;
     std::array<BlockDecomposition::Range, 3> _ranges;
     Index3 _index;
+    std::array<MPI_Datatype, 3> _slice_types;
 };
