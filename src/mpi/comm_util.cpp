@@ -14,11 +14,11 @@ enum Tags: int {
 
 }
 
-MPI_Datatype makeDataVectorType(MPI_Datatype src_type, int num_of_blocks, int block_size, int stride, int extent) {
+MPI_Datatype makeVectorType(MPI_Datatype src_type, int num_of_blocks, int block_size, MPI_Aint stride, int extent) {
     MPI_Datatype type, vtype;
-    MPI_Type_vector(num_of_blocks, block_size, stride, src_type, &type);
+    MPI_Type_create_hvector(num_of_blocks, block_size, stride, src_type, &type);
     if (extent > 0) {
-        MPI_Type_create_resized(type, 0, extent * sizeof(double), &vtype);
+        MPI_Type_create_resized(type, 0, extent, &vtype);
     } else {
         MPI_Type_dup(type, &vtype);
     }
@@ -26,24 +26,52 @@ MPI_Datatype makeDataVectorType(MPI_Datatype src_type, int num_of_blocks, int bl
     return vtype;
 }
 
-MPI_Datatype makeDataVectorType(int num_of_blocks, int block_size, int stride, int extent) {
-    return makeDataVectorType(MPI_DOUBLE, num_of_blocks, block_size, stride, extent);
+MPI_Datatype makeVectorType(int num_of_blocks, int block_size, int stride, int extent) {
+    return makeVectorType(MPI_DOUBLE, num_of_blocks, block_size, stride * sizeof(double), extent * sizeof(double));
+}
+
+MPI_Datatype makeBlockType(MPI_Datatype src_type, int block_size, int extent) {
+    MPI_Datatype type, btype;
+    MPI_Type_contiguous(block_size, src_type, &type);
+    if (extent > 0) {
+        MPI_Type_create_resized(type, 0, extent, &btype);
+    } else {
+        MPI_Type_dup(type, &btype);
+    }
+    MPI_Type_commit(&btype);
+    return btype;
+}
+
+MPI_Datatype makeBlockType(int block_size, int extent) {
+    return makeBlockType(MPI_DOUBLE, block_size, extent * sizeof(double));
 }
 
 MPI_Datatype makeSliceXType(const DArray3 &array) {
-
+    // Slice in YZ plane
+    return makeVectorType(array.size(1), array.size(2), array.fullSize(2), array.fullSize(1) * array.fullSize(2));
 }
 
 MPI_Datatype makeSliceYType(const DArray3 &array) {
-
+    // Slice in XZ plane
+    auto y_row_type = makeBlockType(array.size(2), array.fullSize(2));
+    auto y_slice_type = makeVectorType(y_row_type, array.size(0), 1, array.fullSize(1) * array.fullSize(2) * sizeof(double), array.fullSize(2) * sizeof(double));
+    MPI_Type_free(&y_row_type);
+    return y_slice_type;
 }
 
 MPI_Datatype makeSliceZType(const DArray3 &array) {
-
+    // Slice in XY plane
+    auto z_col_type = makeVectorType(array.size(1), 1, array.fullSize(2));
+    auto z_slice_type = makeVectorType(z_col_type, array.size(0), 1, array.fullSize(1) * array.fullSize(2) * sizeof(double), sizeof(double));
+    MPI_Type_free(&z_col_type);
+    return z_slice_type;
 }
 
 MPI_Datatype makeDataBlockType(const DArray3 &array) {
-
+    auto x_slice_type = makeSliceXType(array);
+    auto data_block_type = makeVectorType(x_slice_type, array.size(0), 1, array.fullSize(1) * array.fullSize(2) * sizeof(double), 0);
+    MPI_Type_free(&x_slice_type);
+    return data_block_type;
 }
 
 void syncShadowsXPrev(DArray3 &arr, MPI_Datatype slice_type, int rank, int neigh_rank) {

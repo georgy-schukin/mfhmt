@@ -17,6 +17,38 @@ using namespace std;
 
 using DDArray3 = DistributedArray3D;
 
+void copySliceX(DDArray3 &arr, int dst, int src, int lend, int kend) {
+    for (int l = 0; l < lend; l++) {
+        for (int k = 0; k < kend; k++) {
+            arr(dst, l, k) = arr(src, l, k);
+        }
+    }
+}
+
+void copySliceY(DDArray3 &arr, int dst, int src, int iend, int kend) {
+    for (int i = 0; i < iend; i++) {
+        for (int k = 0; k < kend; k++) {
+            arr(i, dst, k) = arr(i, src, k);
+        }
+    }
+}
+
+void copySliceZ(DDArray3 &arr, int dst, int src, int iend, int lend) {
+    for (int i = 0; i < iend; i++) {
+        for (int l = 0; l < lend; l++) {
+            arr(i, l, dst) = arr(i, l, src);
+        }
+    }
+}
+
+void addSliceZ(DDArray3 &arr, int dst, int src, int iend, int lend) {
+    for (int i = 0; i < iend; i++) {
+        for (int l = 0; l < lend; l++) {
+            arr(i, l, dst) += arr(i, l, src);
+        }
+    }
+}
+
 int main(int argc, char **argv) {
 
     const int IM_DEF = 40;
@@ -227,39 +259,7 @@ int main(int argc, char **argv) {
     const double c21 = hy / hx;
     const double c23 = hy / hz;
 
-    auto copySliceX = [](DDArray3 &arr, int dst, int src, int lend, int kend) {
-        for (int l = 0; l < lend; l++) {
-            for (int k = 0; k < kend; k++) {
-                arr(dst, l, k) = arr(src, l, k);
-            }
-        }
-    };
-
-    auto copySliceY = [](DDArray3 &arr, int dst, int src, int iend, int kend) {
-        for (int i = 0; i < iend; i++) {
-            for (int k = 0; k < kend; k++) {
-                arr(i, dst, k) = arr(i, src, k);
-            }
-        }
-    };
-
-    auto copySliceZ = [](DDArray3 &arr, int dst, int src, int iend, int lend) {
-        for (int i = 0; i < iend; i++) {
-            for (int l = 0; l < lend; l++) {
-                arr(i, l, dst) = arr(i, l, src);
-            }
-        }
-    };
-
-    auto addSliceZ = [](DDArray3 &arr, int dst, int src, int iend, int lend) {
-        for (int i = 0; i < iend; i++) {
-            for (int l = 0; l < lend; l++) {
-                arr(i, l, dst) += arr(i, l, src);
-            }
-        }
-    };
-
-    auto updateCurrent = [im, lm, km, &addSliceZ, &copySliceZ](DDArray3 &jx, DDArray3 &jy, DDArray3 &jz) {
+    auto updateCurrent = [im, lm, km](DDArray3 &jx, DDArray3 &jy, DDArray3 &jz) {
         addSliceZ(jx, 1, km + 1, im + 2, lm + 2);
         addSliceZ(jx, km, 0, im + 2, lm + 2);
         copySliceZ(jx, 0, km, im + 2, lm + 2);

@@ -5,8 +5,11 @@
 #include "defs.h"
 #include "block_decomp.h"
 
-MPI_Datatype makeDataVectorType(MPI_Datatype src_type, int num_of_blocks, int block_size, int stride, int extent = -1);
-MPI_Datatype makeDataVectorType(int num_of_blocks, int block_size, int stride, int extent = -1);
+MPI_Datatype makeVectorType(MPI_Datatype src_type, int num_of_blocks, int block_size, MPI_Aint stride, int extent);
+MPI_Datatype makeVectorType(int num_of_blocks, int block_size, int stride, int extent = -1);
+MPI_Datatype makeBlockType(MPI_Datatype src_type, int block_size, int extent);
+MPI_Datatype makeBlockType(int block_size, int extent = -1);
+
 MPI_Datatype makeSliceXType(const DArray3 &array);
 MPI_Datatype makeSliceYType(const DArray3 &array);
 MPI_Datatype makeSliceZType(const DArray3 &array);
