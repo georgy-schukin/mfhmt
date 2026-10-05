@@ -9,6 +9,7 @@
 
 #include <string>
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <cmath>
 #include <tuple>
@@ -18,34 +19,57 @@ using namespace std;
 using DDArray3 = DistributedArray3D;
 
 void copySliceX(DDArray3 &arr, int dst, int src, int lend, int kend) {
-    for (int l = 0; l < lend; l++) {
-        for (int k = 0; k < kend; k++) {
-            arr(dst, l, k) = arr(src, l, k);
+    const auto dst_l = arr.range(0).toLocal(dst);
+    const auto src_l = arr.range(0).toLocal(src);
+    const auto lend_l = arr.range(1).localEnd(lend);
+    const auto kend_l = arr.range(2).localEnd(kend);
+    for (int l = 0; l < lend_l; l++) {
+        for (int k = 0; k < kend_l; k++) {
+            arr(dst_l, l, k) = arr(src_l, l, k);
         }
     }
 }
 
 void copySliceY(DDArray3 &arr, int dst, int src, int iend, int kend) {
-    for (int i = 0; i < iend; i++) {
-        for (int k = 0; k < kend; k++) {
-            arr(i, dst, k) = arr(i, src, k);
+    const auto dst_l = arr.range(1).toLocal(dst);
+    const auto src_l = arr.range(1).toLocal(src);
+    const auto iend_l = arr.range(0).localEnd(iend);
+    const auto kend_l = arr.range(2).localEnd(kend);
+    for (int i = 0; i < iend_l; i++) {
+        for (int k = 0; k < kend_l; k++) {
+            arr(i, dst_l, k) = arr(i, src_l, k);
         }
     }
 }
 
 void copySliceZ(DDArray3 &arr, int dst, int src, int iend, int lend) {
-    for (int i = 0; i < iend; i++) {
-        for (int l = 0; l < lend; l++) {
-            arr(i, l, dst) = arr(i, l, src);
+    const auto dst_l = arr.range(2).toLocal(dst);
+    const auto src_l = arr.range(2).toLocal(src);
+    const auto iend_l = arr.range(0).localEnd(iend);
+    const auto lend_l = arr.range(1).localEnd(lend);
+    for (int i = 0; i < iend_l; i++) {
+        for (int l = 0; l < lend_l; l++) {
+            arr(i, l, dst_l) = arr(i, l, src_l);
         }
     }
 }
 
 void addSliceZ(DDArray3 &arr, int dst, int src, int iend, int lend) {
-    for (int i = 0; i < iend; i++) {
-        for (int l = 0; l < lend; l++) {
-            arr(i, l, dst) += arr(i, l, src);
+    const auto dst_l = arr.range(2).toLocal(dst);
+    const auto src_l = arr.range(2).toLocal(src);
+    const auto iend_l = arr.range(0).localEnd(iend);
+    const auto lend_l = arr.range(1).localEnd(lend);
+    for (int i = 0; i < iend_l; i++) {
+        for (int l = 0; l < lend_l; l++) {
+            arr(i, l, dst_l) += arr(i, l, src_l);
         }
+    }
+}
+
+void checkAndAdd(DDArray3 &arr, int i, int j, int k, double value) {
+    if (arr.hasIndex(i, j, k)) {
+        const auto l_ind = arr.toLocal(i, j, k);
+        arr(l_ind[0], l_ind[1], l_ind[2]) += value;
     }
 }
 
@@ -87,13 +111,13 @@ int main(int argc, char **argv) {
     const bool file_output = (argc > 5) ? stoi(argv[5]) : FOUT_DEF;
     const bool screen_output = (argc > 6) ? stoi(argv[6]) : SOUT_DEF;
 
-    CartTopology<3> cart_tp(rank, size);
+    // Can't distribute by Z because of data dependencies, so make 2D lattice only.
+    CartTopology<3> cart_tp(rank, size, {0, 0, 1});
 
-    const size_t ims = im + 2;
-    const size_t lms = lm + 2;
-    const size_t kms = km + 2;
-
-    BlockDecomposition3D decomp3d(ims, cart_tp.dim(0), lms, cart_tp.dim(1), kms, cart_tp.dim(2));
+    const auto im_decomp = BlockDecomposition(im, cart_tp.dim(0)).grown(1); // decomp im + 2
+    const auto lm_decomp = BlockDecomposition(lm, cart_tp.dim(1)).grown(1); // decomp lm + 2
+    const auto km_decomp = BlockDecomposition(km, cart_tp.dim(2)).grown(1); // decomp km + 2
+    BlockDecomposition3D decomp3d(im_decomp, lm_decomp, km_decomp);
 
     DDArray3 jx(decomp3d, cart_tp), jy(decomp3d, cart_tp), jz(decomp3d, cart_tp);
     DDArray3 ax(decomp3d, cart_tp), ay(decomp3d, cart_tp), az(decomp3d, cart_tp);
@@ -156,9 +180,9 @@ int main(int argc, char **argv) {
         i = i - 1;
         l = l - 1;
         k = k - 1;
-        p(i,l,k) += su * (dy1 * dz1 + s1);
-        p(i,l,k+1) += su * (dy1 * dz - s1);
-        p(i,l+1,k) += su * (dy * dz1 - s1);
+        checkAndAdd(p, i, l, k, su * (dy1 * dz1 + s1));
+        checkAndAdd(p, i, l, k+1, su * (dy1 * dz - s1));
+        checkAndAdd(p, i, l+1, k, su * (dy * dz1 - s1));
         p(i,l+1,k+1) += su * (dy * dz + s1);
         q(i,l,k) += sv * (dx1 * dz1 + s2);
         q(i,l,k+1) += sv * (dx1 * dz - s2);
@@ -260,18 +284,18 @@ int main(int argc, char **argv) {
     const double c23 = hy / hz;
 
     auto updateCurrent = [im, lm, km](DDArray3 &jx, DDArray3 &jy, DDArray3 &jz) {
-        addSliceZ(jx, 1, km + 1, im + 2, lm + 2);
-        addSliceZ(jx, km, 0, im + 2, lm + 2);
-        copySliceZ(jx, 0, km, im + 2, lm + 2);
-        copySliceZ(jx, km + 1, 1, im + 2, lm + 2);
+        addSliceZ(jx, 1, km + 1, im + 2, lm + 2); // z: Jx(1) <- Jx(km+1)
+        addSliceZ(jx, km, 0, im + 2, lm + 2); // z: Jx(km) <- Jx(0)
+        copySliceZ(jx, 0, km, im + 2, lm + 2); // z: Jx(0) <- Jx(km)
+        copySliceZ(jx, km + 1, 1, im + 2, lm + 2); // z: Jx(km+1) <- Jx(1)
 
-        addSliceZ(jy, 1, km + 1, im + 2, lm + 2);
-        addSliceZ(jy, km, 0, im + 2, lm + 2);
-        copySliceZ(jy, 0, km, im + 2, lm + 2);
-        copySliceZ(jy, km + 1, 1, im + 2, lm + 2);
+        addSliceZ(jy, 1, km + 1, im + 2, lm + 2); // z: Jy(1) <- Jy(km)
+        addSliceZ(jy, km, 0, im + 2, lm + 2); // z: Jy(km) <- Jy(0)
+        copySliceZ(jy, 0, km, im + 2, lm + 2); // z: Jy(0) <- Jy(km)
+        copySliceZ(jy, km + 1, 1, im + 2, lm + 2); // z: Jy(km+1) <- Jy(1)
 
-        addSliceZ(jz, km, 0, im + 2, lm + 2);
-        copySliceZ(jz, 0, km, im + 2, lm + 2);
+        addSliceZ(jz, km, 0, im + 2, lm + 2); // z: Jz(km) <- Jz(0)
+        copySliceZ(jz, 0, km, im + 2, lm + 2); // z: Jz(0) <- Jz(km)
     };
 
     auto computeBoundaryX = [im, lm, km](DDArray3 &ax, DDArray3 &ay, DDArray3 &az, int dst, int src1, int src2, double c1, double c2) {
@@ -483,9 +507,18 @@ int main(int argc, char **argv) {
         out_lst.close();
     }
 
-    std::cout << "Im: " << im << ", Lm: " << lm << ", Km: " << km << ", Nm: " << nm << std::endl;
-    std::cout << "TIME: " << work_time << std::endl;
-    std::cout << "Iters: " << iter << std::endl;
+    std::ostringstream out;
+
+    if (rank == 0) {
+        out << "Im: " << im << ", Lm: " << lm << ", Km: " << km << ", Nm: " << nm <<
+            ", Nodes: " << size <<
+            ", Grid: " << cart_tp.dim(0) << "x" << cart_tp.dim(1) << "x" << cart_tp.dim(2) <<
+            std::endl;
+        out << "TIME: " << work_time << std::endl;
+        out << "Iters: " << iter << std::endl;
+    }
+
+    std::cout << out.str();
 
     gatherAndOutput("jx.dat", jx, im + 1, lm + 2, km + 2);
     gatherAndOutput("jy.dat", jy, im + 2, lm + 1, km + 2);

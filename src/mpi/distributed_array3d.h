@@ -73,6 +73,10 @@ public:
         return _decomp.decomp(dim);
     }
 
+    const BlockDecomposition3D& decomp() const {
+        return _decomp;
+    }
+
     const BlockDecomposition::Range& range(size_t dim) const {
         return _ranges[dim];
     }
@@ -91,6 +95,14 @@ public:
 
     DArray3& localArray() {
         return _data;
+    }
+
+    bool hasIndex(int gx, int gy, int gz) const {
+        return range(0).hasIndex(gx) && range(1).hasIndex(gy) && range(2).hasIndex(gz);
+    }
+
+    Index3 toLocal(int gx, int gy, int gz) const {
+        return Index3 {range(0).toLocal(gx), range(1).toLocal(gy), range(2).toLocal(gz)};
     }
 
     AsyncOps syncShadows(size_t dim);
