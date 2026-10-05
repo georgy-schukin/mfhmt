@@ -10,6 +10,38 @@
 
 using namespace std;
 
+void copySliceX(DArray3 &arr, int dst, int src, int lend, int kend) {
+    for (int l = 0; l < lend; l++) {
+        for (int k = 0; k < kend; k++) {
+            arr(dst, l, k) = arr(src, l, k);
+        }
+    }
+}
+
+void copySliceY(DArray3 &arr, int dst, int src, int iend, int kend) {
+    for (int i = 0; i < iend; i++) {
+        for (int k = 0; k < kend; k++) {
+            arr(i, dst, k) = arr(i, src, k);
+        }
+    }
+}
+
+void copySliceZ(DArray3 &arr, int dst, int src, int iend, int lend) {
+    for (int i = 0; i < iend; i++) {
+        for (int l = 0; l < lend; l++) {
+            arr(i, l, dst) = arr(i, l, src);
+        }
+    }
+}
+
+void addSliceZ(DArray3 &arr, int dst, int src, int iend, int lend) {
+    for (int i = 0; i < iend; i++) {
+        for (int l = 0; l < lend; l++) {
+            arr(i, l, dst) += arr(i, l, src);
+        }
+    }
+}
+
 int main(int argc, char **argv) {
 
     const int IM_DEF = 40;
@@ -337,38 +369,6 @@ int main(int argc, char **argv) {
     const double c21 = hy / hx;
     const double c23 = hy / hz;
 
-    auto copySliceX = [](DArray3 &arr, int dst, int src, int lend, int kend) {
-        for (int l = 0; l < lend; l++) {
-            for (int k = 0; k < kend; k++) {
-                arr(dst, l, k) = arr(src, l, k);
-            }
-        }
-    };
-
-    auto copySliceY = [](DArray3 &arr, int dst, int src, int iend, int kend) {
-        for (int i = 0; i < iend; i++) {
-            for (int k = 0; k < kend; k++) {
-                arr(i, dst, k) = arr(i, src, k);
-            }
-        }
-    };
-
-    auto copySliceZ = [](DArray3 &arr, int dst, int src, int iend, int lend) {
-        for (int i = 0; i < iend; i++) {
-            for (int l = 0; l < lend; l++) {
-                arr(i, l, dst) = arr(i, l, src);
-            }
-        }
-    };
-
-    auto addSliceZ = [](DArray3 &arr, int dst, int src, int iend, int lend) {
-        for (int i = 0; i < iend; i++) {
-            for (int l = 0; l < lend; l++) {
-                arr(i, l, dst) += arr(i, l, src);
-            }
-        }
-    };
-
 /*
     do l=1,lm+2
         do i=1,im+2
@@ -388,7 +388,7 @@ int main(int argc, char **argv) {
     enddo
 */
 
-    auto updateCurrent = [im, lm, km, &addSliceZ, &copySliceZ](DArray3 &jx, DArray3 &jy, DArray3 &jz) {
+    auto updateCurrent = [im, lm, km](DArray3 &jx, DArray3 &jy, DArray3 &jz) {
         addSliceZ(jx, 1, km + 1, im + 2, lm + 2);
         addSliceZ(jx, km, 0, im + 2, lm + 2);
         copySliceZ(jx, 0, km, im + 2, lm + 2);

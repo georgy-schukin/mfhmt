@@ -423,32 +423,32 @@ int main(int argc, char **argv) {
     do {
         iter++;
 
-        sx = computeStep(ax, jx, im, lm + 1, km + 1);
+        sx = computeStep(ax, jx, im, lm + 1, km + 1); // Ax(1..im-1,1..lm,1..km) <- Ax(0..im,0..lm+1,0..km+1)
 
-        computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13);
-        computeBoundaryX(ax, ay, az, im, im - 1, im, -c12, -c13);
+        computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13); // x: Ax(0) <- Ay(1), Az(1) (local)
+        computeBoundaryX(ax, ay, az, im, im - 1, im, -c12, -c13); // x: Ax(im) <- Ay(im-1), Az(im) (local)
 
-        copySliceZ(ax, 0, km, im + 1, lm + 2);
-        copySliceZ(ax, km + 1, 1, im + 1, lm + 2);
+        copySliceZ(ax, 0, km, im + 1, lm + 2); // z: Ax(0) <- Ax(km) (remote)
+        copySliceZ(ax, km + 1, 1, im + 1, lm + 2); // z: Ax(km+1) <- Ax(1) (remote)
 
-        copySliceY(ax, 0, 1, im + 1, km + 2);
-        copySliceY(ax, lm + 1, lm, im + 1, km + 2);
+        copySliceY(ax, 0, 1, im + 1, km + 2); // y: Ax(0) <- Ax(1) (local)
+        copySliceY(ax, lm + 1, lm, im + 1, km + 2); // y: Ax(lm+1) <- Ax(lm) (local)
 
-        sy = computeStep(ay, jy, im + 1, lm, km + 1);
+        sy = computeStep(ay, jy, im + 1, lm, km + 1); // Ay(1..im,1..lm-1,1..km) <- Ay(0..im+1,0..lm,0..km+1)
 
-        computeBoundaryY(ax, ay, az, 0, 1, 1, c21, c23);
-        computeBoundaryY(ax, ay, az, lm, lm - 1, lm, -c21, -c23);
+        computeBoundaryY(ax, ay, az, 0, 1, 1, c21, c23); // y: Ay(0) <- Ax(1), Ay(1) (local)
+        computeBoundaryY(ax, ay, az, lm, lm - 1, lm, -c21, -c23); // y: Ay(lm) <- Ax(lm-1), Az(lm) (local)
 
-        copySliceZ(ay, 0, km, im + 1, lm + 1);
-        copySliceZ(ay, km + 1, 1, im + 1, lm + 1);
+        copySliceZ(ay, 0, km, im + 1, lm + 1); // z: Ay(0) <- Ay(km) (remote)
+        copySliceZ(ay, km + 1, 1, im + 1, lm + 1); // z: Ay(km+1) <- Ay(1) (remote)
 
-        copySliceX(ay, 0, 1, lm + 1, km + 2);
-        copySliceX(ay, im + 1, im, lm + 1, km + 2);
+        copySliceX(ay, 0, 1, lm + 1, km + 2); // x: Ay(0) <- Ay(1) (local)
+        copySliceX(ay, im + 1, im, lm + 1, km + 2); // x: Ay(im+1) <- Ay(im) (local)
 
-        sz = computeStepZ(az, jz, im + 1, lm + 1, km);
+        sz = computeStepZ(az, jz, im + 1, lm + 1, km); // Az(1..im,1..lm,0..km) <- Az(0..im+1,0..lm+1,0..km)
 
-        copySliceZ(az, 0, km, im + 2, lm + 2);
-        copySliceZ(az, km+1, 1, im + 2, lm + 2);
+        copySliceZ(az, 0, km, im + 2, lm + 2); // z: Az(0) <- Az(km) (remote)
+        copySliceZ(az, km+1, 1, im + 2, lm + 2); // z: Az(km+1) <- Az(1) (remote)
 
         if (screen_output) {
             std::cout << iter << " " << sx << " " << sy << " " << sz << std::endl;
