@@ -249,10 +249,11 @@ int main(int argc, char **argv) {
         checkAndAdd(r, i+1, l+1, k, sw * (dx * dy + s3));
     };
 
-    auto initHelicalCurrent = [x0, y0, r0, h0, nm, hx, hy, hz, rhx, rhy, rhz, c1, &pqr](DDArray3 &jx, DDArray3 &jy, DDArray3 &jz) {
+    auto initHelicalCurrent = [x0, y0, r0, h0, nm, hx, hy, hz, rhx, rhy, rhz, c1, &pqr, &comp_time](DDArray3 &jx, DDArray3 &jy, DDArray3 &jz) {
         double x = x0 + r0;
         double y = y0;
         double z = 0.0;
+        Timer tm;
         for (int n = 1; n <= nm; n++) {
             const double x1 = x0 + r0 * std::cos(c1 * n);
             const double y1 = y0 + r0 * std::sin(c1 * n);
@@ -322,6 +323,7 @@ int main(int argc, char **argv) {
             y = y1;
             z = z1;
         }
+        comp_time += tm.time();
     };
 
     const double hx2 = hx * hx;
@@ -338,7 +340,8 @@ int main(int argc, char **argv) {
     const double c21 = hy / hx;
     const double c23 = hy / hz;
 
-    auto updateCurrent = [im, lm, km](DDArray3 &jx, DDArray3 &jy, DDArray3 &jz) {
+    auto updateCurrent = [im, lm, km, &comp_time](DDArray3 &jx, DDArray3 &jy, DDArray3 &jz) {
+        Timer tm;
         addSliceZ(jx, 1, km + 1, im + 2, lm + 2); // z: Jx(1) <- Jx(km+1)
         addSliceZ(jx, km, 0, im + 2, lm + 2); // z: Jx(km) <- Jx(0)
         copySliceZ(jx, 0, km, im + 2, lm + 2); // z: Jx(0) <- Jx(km)
@@ -351,11 +354,13 @@ int main(int argc, char **argv) {
 
         addSliceZ(jz, km, 0, im + 2, lm + 2); // z: Jz(km) <- Jz(0)
         copySliceZ(jz, 0, km, im + 2, lm + 2); // z: Jz(0) <- Jz(km)
+        comp_time += tm.time();
     };
 
-    auto computeBoundaryX = [im, lm, km](DDArray3 &ax, DDArray3 &ay, DDArray3 &az, int dst, int src1, int src2, double c1, double c2) {
+    auto computeBoundaryX = [im, lm, km, &comp_time](DDArray3 &ax, DDArray3 &ay, DDArray3 &az, int dst, int src1, int src2, double c1, double c2) {
         const auto l_start_l = ax.range(1).localStart(1);
         const auto l_end_l = ax.range(1).localEnd(lm + 1);
+        Timer tm;
         for (int l = l_start_l; l < l_end_l; l++) {
             for (int k = 1; k < km + 1; k++) {
                 ax(dst, l, k) = ax(src1, l, k) +
@@ -363,11 +368,13 @@ int main(int argc, char **argv) {
                                 c2 * (az(src2, l, k) - az(src2, l, k - 1));
             }
         }
+        comp_time += tm.time();
     };
 
-    auto computeBoundaryY = [im, lm, km](DDArray3 &ax, DDArray3 &ay, DDArray3 &az, int dst, int src1, int src2, double c1, double c2) {
+    auto computeBoundaryY = [im, lm, km, &comp_time](DDArray3 &ax, DDArray3 &ay, DDArray3 &az, int dst, int src1, int src2, double c1, double c2) {
         const auto i_start_l = ax.range(0).localStart(1);
         const auto i_end_l = ax.range(0).localEnd(im + 1);
+        Timer tm;
         for (int i = i_start_l; i < i_end_l; i++) {
             for (int k = 1; k < km + 1; k++) {
                 ay(i, dst, k) = ay(i, src1, k) +
@@ -375,15 +382,17 @@ int main(int argc, char **argv) {
                                 c2 * (az(i, src2, k) - az(i, src2, k - 1));
             }
         }
+        comp_time += tm.time();
     };
 
-    auto computeStep = [rhx2, rhy2, rhz2, rc2, &syncShadows](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
+    auto computeStep = [rhx2, rhy2, rhz2, rc2, &syncShadows, &comp_time](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
         syncShadows(arr, SHADOW_PREV);
         const auto i_start_l = arr.range(0).localStart(1);
         const auto i_endl = arr.range(0).localEnd(iend);
         const auto l_start_l = arr.range(1).localStart(1);
         const auto l_end_l = arr.range(1).localEnd(lend);
+        Timer tm;
         for (int i = i_start_l; i < i_endl; i++) {
             for (int l = l_start_l; l < l_end_l; l++) {
                 for (int k = 1; k < kend; k++) {
@@ -395,16 +404,18 @@ int main(int argc, char **argv) {
                 }
             }
         }
+        comp_time += tm.time();
         return maxdiff;
     };
 
-    auto computeStepZ = [rhx2, rhy2, rhz2, rc2, &syncShadows](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
+    auto computeStepZ = [rhx2, rhy2, rhz2, rc2, &syncShadows, &comp_time](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
         syncShadows(arr, SHADOW_PREV);
         const auto i_start_l = arr.range(0).localStart(1);
         const auto i_end_l = arr.range(0).localEnd(iend);
         const auto l_start_l = arr.range(1).localStart(1);
         const auto l_end_l = arr.range(1).localEnd(lend);
+        Timer tm;
         for (int i = i_start_l; i < i_end_l; i++) {
             for (int l = l_start_l; l < l_end_l; l++) {
                 for (int k = 1; k < kend; k++) {
@@ -422,10 +433,11 @@ int main(int argc, char **argv) {
                 arr(i,l,0) = s;
             }
         }
+        comp_time += tm.time();
         return maxdiff;
     };
 
-    auto computeB = [im, lm, km, &syncShadowsI](int dim, DDArray3 &a1, DDArray3 &a2, DDArray3 &b, double rh1, double rh2) {
+    auto computeB = [im, lm, km, &syncShadowsI, &comp_time](int dim, DDArray3 &a1, DDArray3 &a2, DDArray3 &b, double rh1, double rh2) {
         const static Index3 i_end {2, 1, 1};
         const static Index3 l_end {1, 2, 1};
         const static Index3 k_end {1, 1, 2};
@@ -441,6 +453,7 @@ int main(int argc, char **argv) {
         const auto i_end_l = b.range(0).localEnd(im + i_end[dim]);
         const auto l_end_l = b.range(1).localEnd(lm + l_end[dim]);
         const auto k_end_l = b.range(2).localEnd(km + k_end[dim]);
+        Timer tm;
         for (int i = 0; i < i_end_l; i++) {
             for (int l = 0; l < l_end_l; l++) {
                 for (int k = 0; k < k_end_l; k++) {
@@ -449,6 +462,7 @@ int main(int argc, char **argv) {
                 }
             }
         }
+        comp_time += tm.time();
     };
 
     auto outputMax = [&file_output, &out_lst, rank](const std::string &str, double m) {
@@ -463,7 +477,7 @@ int main(int argc, char **argv) {
         }
     };
 
-    auto computeDiv = [im, lm, km, rhx, rhy, rhz, &syncShadowsD, &reduceMaxInd](DDArray3 &x, DDArray3 &y, DDArray3 &z, int start, int shift1, int shift2)
+    auto computeDiv = [im, lm, km, rhx, rhy, rhz, &syncShadowsD, &reduceMaxInd, &comp_time](DDArray3 &x, DDArray3 &y, DDArray3 &z, int start, int shift1, int shift2)
         -> std::pair<double, Index3> {
         syncShadowsD(x, 0, shift1);
         syncShadowsD(x, 0, shift2);
@@ -481,6 +495,7 @@ int main(int argc, char **argv) {
         const auto i_end_l = x.range(0).localEnd(im + 1);
         const auto l_end_l = x.range(1).localEnd(lm + 1);
         const auto k_end_l = x.range(2).localEnd(km + 1);
+        Timer tm;
         for (int i = i_start_l; i < i_end_l; i++) {
             for (int l = l_start_l; l < l_end_l; l++) {
                 for (int k = k_start_l; k < k_end_l; k++) {
@@ -494,10 +509,11 @@ int main(int argc, char **argv) {
                 }
             }
         }
+        comp_time += tm.time();
         return reduceMaxInd(maxval, maxind);
     };
 
-    auto computeRotDiff = [im, lm, km, &syncShadowsI, &reduceMaxInd](int dim, DDArray3 &b1, DDArray3 &b2, const DDArray3 &j, double rh1, double rh2)
+    auto computeRotDiff = [im, lm, km, &syncShadowsI, &reduceMaxInd, &comp_time](int dim, DDArray3 &b1, DDArray3 &b2, const DDArray3 &j, double rh1, double rh2)
         -> std::pair<double, Index3> {
         const static Index3 i_start {0, 1, 1};
         const static Index3 l_start {1, 0, 1};
@@ -520,6 +536,7 @@ int main(int argc, char **argv) {
         const auto i_end_l = b1.range(0).localEnd(im + 1);
         const auto l_end_l = b1.range(1).localEnd(lm + 1);
         const auto k_end_l = b1.range(2).localEnd(km + 1);
+        Timer tm;
         for (int i = i_start_l; i < i_end_l; i++) {
             for (int l = l_start_l; l < l_end_l; l++) {
                 for (int k = k_start_l; k < k_end_l; k++) {
@@ -532,6 +549,7 @@ int main(int argc, char **argv) {
                 }
             }
         }
+        comp_time += tm.time();
         return reduceMaxInd(maxval, maxind);
     };
 
@@ -618,6 +636,11 @@ int main(int argc, char **argv) {
         out << "TIME: " << work_time << std::endl;
         out << "Iters: " << iter << std::endl;
     }
+
+    out << "Node " << rank <<
+        ": Comp time: " << comp_time <<
+        ", Shadow time: " << shadow_time <<
+        ", Reduce time: " << reduce_time << std::endl;
 
     std::cout << out.str();
 

@@ -32,6 +32,12 @@ public:
         return _rank;
     }
 
+    int numOfNodes() const {
+        int size = 0;
+        MPI_Comm_size(_cart_comm, &size);
+        return size;
+    }
+
     bool hasPrevNeighbor(size_t dm) const {
         return _coord[dm] > 0;
     }

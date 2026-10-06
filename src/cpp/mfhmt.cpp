@@ -463,9 +463,9 @@ int main(int argc, char **argv) {
 
     auto computeStep = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
-        for (int k = 1; k < kend; k++) {
+        for (int i = 1; i < iend; i++) {
             for (int l = 1; l < lend; l++) {
-                for (int i = 1; i < iend; i++) {
+                for (int k = 1; k < kend; k++) {
                     const double s = ((arr(i+1,l,k) + arr(i-1,l,k)) * rhx2 +
                                       (arr(i,l+1,k) + arr(i,l-1,k)) * rhy2 +
                                       (arr(i,l,k+1) + arr(i,l,k-1)) * rhz2 + j(i,l,k)) * rc2;
@@ -502,8 +502,8 @@ int main(int argc, char **argv) {
 
     auto computeStepZ = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
-        for (int l = 1; l < lend; l++) {
-            for (int i = 1; i < iend; i++) {
+        for (int i = 1; i < iend; i++) {
+            for (int l = 1; l < lend; l++) {
                 for (int k = 1; k < kend; k++) {
                     const double s = ((arr(i+1,l,k) + arr(i-1,l,k)) * rhx2 +
                                       (arr(i,l+1,k) + arr(i,l-1,k)) * rhy2 +
@@ -542,9 +542,9 @@ int main(int argc, char **argv) {
 
         const auto &s1 = shift1[dim];
         const auto &s2 = shift2[dim];
-        for (int k = 0; k < km + k_end[dim]; k++) {
+        for (int i = 0; i < im + i_end[dim]; i++) {
             for (int l = 0; l < lm + l_end[dim]; l++) {
-                for (int i = 0; i < im + i_end[dim]; i++) {
+                for (int k = 0; k < km + k_end[dim]; k++) {
                     b(i,l,k) = (a1(i+s1[0],l+s1[1],k+s1[2]) - a1(i,l,k)) * rh1 -
                                  (a2(i+s2[0],l+s2[1],k+s2[2]) - a2(i,l,k)) * rh2;
                 }
@@ -582,9 +582,9 @@ int main(int argc, char **argv) {
         -> std::pair<double, Index3> {
         double maxval = 0.0;
         Index3 maxind {0, 0, 0};
-        for (int k = start; k < km + 1; k++) {
+        for (int i = start; i < im + 1; i++) {
             for (int l = start; l < lm + 1; l++) {
-                for (int i = start; i < im + 1; i++) {
+                for (int k = start; k < km + 1; k++) {
                     const double s = (x(i + shift1, l, k) - x(i + shift2, l, k)) * rhx +
                                      (y(i, l + shift1, k) - y(i, l + shift2, k)) * rhy +
                                      (z(i, l, k + shift1) - z(i, l, k + shift2)) * rhz;
@@ -632,9 +632,9 @@ int main(int argc, char **argv) {
         Index3 maxind {0, 0, 0};
         const auto &s1 = shift1[dim];
         const auto &s2 = shift2[dim];
-        for (int k = k_start[dim]; k < km + 1; k++) {
+        for (int i = i_start[dim]; i < im + 1; i++) {
             for (int l = l_start[dim]; l < lm + 1; l++) {
-                for (int i = i_start[dim]; i < im + 1; i++) {
+                for (int k = k_start[dim]; k < km + 1; k++) {
                     const double s = (b1(i,l,k) - b1(i+s1[0],l+s1[1],k+s1[2])) * rh1 -
                                      (b2(i,l,k) - b2(i+s2[0],l+s2[1],k+s2[2])) * rh2 - j(i,l,k);
                     if (std::abs(s) > maxval) {

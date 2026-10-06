@@ -120,7 +120,7 @@ public:
     AsyncOps syncShadowsPrev();
     AsyncOps syncShadowsNext();
 
-    DArray3 gather(int dst_rank) const;
+    DArray3 gather(int dst_rank = 0) const;
 
 private:
     int getShadowSize(const BlockDecomposition &dec) const {

@@ -54,6 +54,10 @@ public:
         _ops.insert(_ops.end(), ops._ops.begin(), ops._ops.end());
     }
 
+    void add(MPI_Request req) {
+        add(AsyncOp(req));
+    }
+
     void wait() {
         for (auto &op: _ops) {
             op.wait();

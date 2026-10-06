@@ -57,7 +57,7 @@ public:
 
     template <typename Index>
     size_t at(Index x, Index y, Index z) const {
-        return (x + _shadow[0]) * _size[1] * _size[2] + (y + _shadow[1]) * _size[2] + z + _shadow[2];
+        return (x + _shadow[0]) * fullSize(1) * fullSize(2) + (y + _shadow[1]) * fullSize(2) + (z + _shadow[2]);
     }
 
     template <typename Index>

@@ -13,7 +13,7 @@ DistributedArray3D::DistributedArray3D(const BlockDecomposition3D &decomp, const
     const auto shadow_z = getShadowSize(decomp.decomp(2));
     _data = std::move(DArray3(size_x, size_y, size_z, shadow_x, shadow_y, shadow_z));
     _ranges = {decomp.range(0, _index[0]), decomp.range(1, _index[1]), decomp.range(2, _index[2])};
-    _slice_types = {makeSliceXType(localArray()), makeSliceZType(localArray()), makeSliceZType(localArray())};
+    _slice_types = {makeSliceXType(localArray()), makeSliceYType(localArray()), makeSliceZType(localArray())};
 }
 
 AsyncOps DistributedArray3D::syncShadows() {
@@ -85,5 +85,5 @@ AsyncOps DistributedArray3D::syncShadows(size_t dim) {
 }
 
 DArray3 DistributedArray3D::gather(int dst_rank) const {
-
+    return gatherArray(localArray(), _decomp, _topology, dst_rank);
 }
