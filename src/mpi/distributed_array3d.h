@@ -51,6 +51,14 @@ public:
         return _data[index];
     }
 
+    double& operator()(const Index3 &ind) {
+        return _data(ind[0], ind[1], ind[2]);
+    }
+
+    const double& operator()(const Index3 &ind) const {
+        return _data(ind[0], ind[1], ind[2]);
+    }
+
     template <typename Index>
     double& operator()(Index x, Index y, Index z) {
         return _data(x, y, z);

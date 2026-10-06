@@ -21,10 +21,10 @@ using DDArray3 = DistributedArray3D;
 void copySliceX(DDArray3 &arr, int dst, int src, int lend, int kend) {
     const auto dst_l = arr.range(0).toLocal(dst);
     const auto src_l = arr.range(0).toLocal(src);
-    const auto lend_l = arr.range(1).localEnd(lend);
-    const auto kend_l = arr.range(2).localEnd(kend);
-    for (int l = 0; l < lend_l; l++) {
-        for (int k = 0; k < kend_l; k++) {
+    const auto l_end_l = arr.range(1).localEnd(lend);
+    const auto k_end_l = arr.range(2).localEnd(kend);
+    for (int l = 0; l < l_end_l; l++) {
+        for (int k = 0; k < k_end_l; k++) {
             arr(dst_l, l, k) = arr(src_l, l, k);
         }
     }
@@ -33,10 +33,10 @@ void copySliceX(DDArray3 &arr, int dst, int src, int lend, int kend) {
 void copySliceY(DDArray3 &arr, int dst, int src, int iend, int kend) {
     const auto dst_l = arr.range(1).toLocal(dst);
     const auto src_l = arr.range(1).toLocal(src);
-    const auto iend_l = arr.range(0).localEnd(iend);
-    const auto kend_l = arr.range(2).localEnd(kend);
-    for (int i = 0; i < iend_l; i++) {
-        for (int k = 0; k < kend_l; k++) {
+    const auto i_end_l = arr.range(0).localEnd(iend);
+    const auto k_end_l = arr.range(2).localEnd(kend);
+    for (int i = 0; i < i_end_l; i++) {
+        for (int k = 0; k < k_end_l; k++) {
             arr(i, dst_l, k) = arr(i, src_l, k);
         }
     }
@@ -45,10 +45,10 @@ void copySliceY(DDArray3 &arr, int dst, int src, int iend, int kend) {
 void copySliceZ(DDArray3 &arr, int dst, int src, int iend, int lend) {
     const auto dst_l = arr.range(2).toLocal(dst);
     const auto src_l = arr.range(2).toLocal(src);
-    const auto iend_l = arr.range(0).localEnd(iend);
-    const auto lend_l = arr.range(1).localEnd(lend);
-    for (int i = 0; i < iend_l; i++) {
-        for (int l = 0; l < lend_l; l++) {
+    const auto i_end_l = arr.range(0).localEnd(iend);
+    const auto l_end_l = arr.range(1).localEnd(lend);
+    for (int i = 0; i < i_end_l; i++) {
+        for (int l = 0; l < l_end_l; l++) {
             arr(i, l, dst_l) = arr(i, l, src_l);
         }
     }
@@ -57,10 +57,10 @@ void copySliceZ(DDArray3 &arr, int dst, int src, int iend, int lend) {
 void addSliceZ(DDArray3 &arr, int dst, int src, int iend, int lend) {
     const auto dst_l = arr.range(2).toLocal(dst);
     const auto src_l = arr.range(2).toLocal(src);
-    const auto iend_l = arr.range(0).localEnd(iend);
-    const auto lend_l = arr.range(1).localEnd(lend);
-    for (int i = 0; i < iend_l; i++) {
-        for (int l = 0; l < lend_l; l++) {
+    const auto i_end_l = arr.range(0).localEnd(iend);
+    const auto l_end_l = arr.range(1).localEnd(lend);
+    for (int i = 0; i < i_end_l; i++) {
+        for (int l = 0; l < l_end_l; l++) {
             arr(i, l, dst_l) += arr(i, l, src_l);
         }
     }
@@ -69,7 +69,7 @@ void addSliceZ(DDArray3 &arr, int dst, int src, int iend, int lend) {
 void checkAndAdd(DDArray3 &arr, int i, int j, int k, double value) {
     if (arr.hasIndex(i, j, k)) {
         const auto l_ind = arr.toLocal(i, j, k);
-        arr(l_ind[0], l_ind[1], l_ind[2]) += value;
+        arr(l_ind) += value;
     }
 }
 
@@ -140,6 +140,61 @@ int main(int argc, char **argv) {
     const double r0 = 1.0;
     const double h0 = zm / (2.0 * pi);
 
+    double comp_time = 0;
+    double shadow_time = 0;
+    double reduce_time = 0;
+
+    enum ShadowSyncType {
+        SHADOW_ALL = 0,
+        SHADOW_PREV,
+        SHADOW_NEXT
+    };
+
+    auto syncShadows = [&shadow_time](DDArray3 &arr, ShadowSyncType type = SHADOW_ALL, int dim = -1) {
+        Timer tm;
+        AsyncOps ops;
+        switch (type) {
+            case SHADOW_ALL: ops = (dim >= 0 ? arr.syncShadows(dim) : arr.syncShadows()); break;
+            case SHADOW_PREV: ops = (dim >= 0 ? arr.syncShadowsPrev(dim) : arr.syncShadowsPrev()); break;
+            case SHADOW_NEXT: ops = (dim >= 0 ? arr.syncShadowsNext(dim) : arr.syncShadowsNext()); break;
+        }
+        ops.wait();
+        shadow_time += tm.time();
+    };
+
+    auto syncShadowsI = [&syncShadows](DDArray3 &arr, const Index3 &shifts) {
+        for (int dim = 0; dim < 3; dim++) {
+            if (shifts[dim] > 0) {
+                syncShadows(arr, SHADOW_NEXT, dim);
+            } else if (shifts[dim] < 0) {
+                syncShadows(arr, SHADOW_PREV, dim);
+            }
+        }
+    };
+
+    auto syncShadowsD = [&syncShadows](DDArray3 &arr, int dim, int shift) {
+        if (shift > 0) {
+            syncShadows(arr, SHADOW_NEXT, dim);
+        } else if (shift < 0) {
+            syncShadows(arr, SHADOW_PREV, dim);
+        }
+    };
+
+    auto reduceMaxInd = [rank, &reduce_time](double value, const Index3 &ind) -> std::pair<double, Index3> {
+        struct {
+            double value;
+            int rank;
+        } local, global;
+        local.value = value;
+        local.rank = rank;
+        Index3 max_index = ind;
+        Timer tm;
+        MPI_Allreduce(&local, &global, 1, MPI_DOUBLE_INT, MPI_MAXLOC, MPI_COMM_WORLD);
+        MPI_Bcast(max_index.data(), 3, MPI_INT, global.rank, MPI_COMM_WORLD);
+        reduce_time += tm.time();
+        return std::make_pair(global.value, max_index);
+    };
+
     std::ofstream out_lst;
 
     if (file_output) {
@@ -183,15 +238,15 @@ int main(int argc, char **argv) {
         checkAndAdd(p, i, l, k, su * (dy1 * dz1 + s1));
         checkAndAdd(p, i, l, k+1, su * (dy1 * dz - s1));
         checkAndAdd(p, i, l+1, k, su * (dy * dz1 - s1));
-        p(i,l+1,k+1) += su * (dy * dz + s1);
-        q(i,l,k) += sv * (dx1 * dz1 + s2);
-        q(i,l,k+1) += sv * (dx1 * dz - s2);
-        q(i+1,l,k) += sv * (dx * dz1 - s2);
-        q(i+1,l,k+1) += sv * (dx * dz + s2);
-        r(i,l,k) += sw * (dx1 * dy1 + s3);
-        r(i,l+1,k) += sw * (dx1 * dy - s3);
-        r(i+1,l,k) += sw * (dx * dy1 - s3);
-        r(i+1,l+1,k) += sw * (dx * dy + s3);
+        checkAndAdd(p, i, l+1, k+1, su * (dy * dz + s1));
+        checkAndAdd(q, i, l, k, sv * (dx1 * dz1 + s2));
+        checkAndAdd(q, i, l, k+1, sv * (dx1 * dz - s2));
+        checkAndAdd(q, i+1, l, k, sv * (dx * dz1 - s2));
+        checkAndAdd(q, i+1, l, k+1, sv * (dx * dz + s2));
+        checkAndAdd(r, i, l, k, sw * (dx1 * dy1 + s3));
+        checkAndAdd(r, i, l+1, k, sw * (dx1 * dy - s3));
+        checkAndAdd(r, i+1, l, k, sw * (dx * dy1 - s3));
+        checkAndAdd(r, i+1, l+1, k, sw * (dx * dy + s3));
     };
 
     auto initHelicalCurrent = [x0, y0, r0, h0, nm, hx, hy, hz, rhx, rhy, rhz, c1, &pqr](DDArray3 &jx, DDArray3 &jy, DDArray3 &jz) {
@@ -299,7 +354,9 @@ int main(int argc, char **argv) {
     };
 
     auto computeBoundaryX = [im, lm, km](DDArray3 &ax, DDArray3 &ay, DDArray3 &az, int dst, int src1, int src2, double c1, double c2) {
-        for (int l = 1; l < lm + 1; l++) {
+        const auto l_start_l = ax.range(1).localStart(1);
+        const auto l_end_l = ax.range(1).localEnd(lm + 1);
+        for (int l = l_start_l; l < l_end_l; l++) {
             for (int k = 1; k < km + 1; k++) {
                 ax(dst, l, k) = ax(src1, l, k) +
                                 c1 * (ay(src2, l, k) - ay(src2, l - 1, k)) +
@@ -309,7 +366,9 @@ int main(int argc, char **argv) {
     };
 
     auto computeBoundaryY = [im, lm, km](DDArray3 &ax, DDArray3 &ay, DDArray3 &az, int dst, int src1, int src2, double c1, double c2) {
-        for (int i = 1; i < im + 1; i++) {
+        const auto i_start_l = ax.range(0).localStart(1);
+        const auto i_end_l = ax.range(0).localEnd(im + 1);
+        for (int i = i_start_l; i < i_end_l; i++) {
             for (int k = 1; k < km + 1; k++) {
                 ay(i, dst, k) = ay(i, src1, k) +
                                 c1 * (ax(i, src2, k) - ax(i - 1, src2, k)) +
@@ -318,11 +377,16 @@ int main(int argc, char **argv) {
         }
     };
 
-    auto computeStep = [rhx2, rhy2, rhz2, rc2](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
+    auto computeStep = [rhx2, rhy2, rhz2, rc2, &syncShadows](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
-        for (int k = 1; k < kend; k++) {
-            for (int l = 1; l < lend; l++) {
-                for (int i = 1; i < iend; i++) {
+        syncShadows(arr, SHADOW_PREV);
+        const auto i_start_l = arr.range(0).localStart(1);
+        const auto i_endl = arr.range(0).localEnd(iend);
+        const auto l_start_l = arr.range(1).localStart(1);
+        const auto l_end_l = arr.range(1).localEnd(lend);
+        for (int i = i_start_l; i < i_endl; i++) {
+            for (int l = l_start_l; l < l_end_l; l++) {
+                for (int k = 1; k < kend; k++) {
                     const double s = ((arr(i+1,l,k) + arr(i-1,l,k)) * rhx2 +
                                       (arr(i,l+1,k) + arr(i,l-1,k)) * rhy2 +
                                       (arr(i,l,k+1) + arr(i,l,k-1)) * rhz2 + j(i,l,k)) * rc2;
@@ -334,10 +398,15 @@ int main(int argc, char **argv) {
         return maxdiff;
     };
 
-    auto computeStepZ = [rhx2, rhy2, rhz2, rc2](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
+    auto computeStepZ = [rhx2, rhy2, rhz2, rc2, &syncShadows](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
         double maxdiff = 0.0;
-        for (int l = 1; l < lend; l++) {
-            for (int i = 1; i < iend; i++) {
+        syncShadows(arr, SHADOW_PREV);
+        const auto i_start_l = arr.range(0).localStart(1);
+        const auto i_end_l = arr.range(0).localEnd(iend);
+        const auto l_start_l = arr.range(1).localStart(1);
+        const auto l_end_l = arr.range(1).localEnd(lend);
+        for (int i = i_start_l; i < i_end_l; i++) {
+            for (int l = l_start_l; l < l_end_l; l++) {
                 for (int k = 1; k < kend; k++) {
                     const double s = ((arr(i+1,l,k) + arr(i-1,l,k)) * rhx2 +
                                       (arr(i,l+1,k) + arr(i,l-1,k)) * rhy2 +
@@ -356,7 +425,7 @@ int main(int argc, char **argv) {
         return maxdiff;
     };
 
-    auto computeB = [im, lm, km](int dim, const DDArray3 &a1, const DDArray3 &a2, DDArray3 &b, double rh1, double rh2) {
+    auto computeB = [im, lm, km, &syncShadowsI](int dim, DDArray3 &a1, DDArray3 &a2, DDArray3 &b, double rh1, double rh2) {
         const static Index3 i_end {2, 1, 1};
         const static Index3 l_end {1, 2, 1};
         const static Index3 k_end {1, 1, 2};
@@ -365,9 +434,16 @@ int main(int argc, char **argv) {
 
         const auto &s1 = shift1[dim];
         const auto &s2 = shift2[dim];
-        for (int k = 0; k < km + k_end[dim]; k++) {
-            for (int l = 0; l < lm + l_end[dim]; l++) {
-                for (int i = 0; i < im + i_end[dim]; i++) {
+
+        syncShadowsI(a1, s1);
+        syncShadowsI(a2, s2);
+
+        const auto i_end_l = b.range(0).localEnd(im + i_end[dim]);
+        const auto l_end_l = b.range(1).localEnd(lm + l_end[dim]);
+        const auto k_end_l = b.range(2).localEnd(km + k_end[dim]);
+        for (int i = 0; i < i_end_l; i++) {
+            for (int l = 0; l < l_end_l; l++) {
+                for (int k = 0; k < k_end_l; k++) {
                     b(i,l,k) = (a1(i+s1[0],l+s1[1],k+s1[2]) - a1(i,l,k)) * rh1 -
                                  (a2(i+s2[0],l+s2[1],k+s2[2]) - a2(i,l,k)) * rh2;
                 }
@@ -387,13 +463,27 @@ int main(int argc, char **argv) {
         }
     };
 
-    auto computeDiv = [im, lm, km, rhx, rhy, rhz](const DDArray3 &x, const DDArray3 &y, const DDArray3 &z, int start, int shift1, int shift2)
+    auto computeDiv = [im, lm, km, rhx, rhy, rhz, &syncShadowsD, &reduceMaxInd](DDArray3 &x, DDArray3 &y, DDArray3 &z, int start, int shift1, int shift2)
         -> std::pair<double, Index3> {
+        syncShadowsD(x, 0, shift1);
+        syncShadowsD(x, 0, shift2);
+        syncShadowsD(y, 1, shift1);
+        syncShadowsD(y, 1, shift2);
+        syncShadowsD(z, 2, shift1);
+        syncShadowsD(z, 2, shift2);
+
         double maxval = 0.0;
         Index3 maxind {0, 0, 0};
-        for (int k = start; k < km + 1; k++) {
-            for (int l = start; l < lm + 1; l++) {
-                for (int i = start; i < im + 1; i++) {
+
+        const auto i_start_l = x.range(0).localStart(start);
+        const auto l_start_l = x.range(1).localStart(start);
+        const auto k_start_l = x.range(2).localStart(start);
+        const auto i_end_l = x.range(0).localEnd(im + 1);
+        const auto l_end_l = x.range(1).localEnd(lm + 1);
+        const auto k_end_l = x.range(2).localEnd(km + 1);
+        for (int i = i_start_l; i < i_end_l; i++) {
+            for (int l = l_start_l; l < l_end_l; l++) {
+                for (int k = k_start_l; k < k_end_l; k++) {
                     const double s = (x(i + shift1, l, k) - x(i + shift2, l, k)) * rhx +
                                      (y(i, l + shift1, k) - y(i, l + shift2, k)) * rhy +
                                      (z(i, l, k + shift1) - z(i, l, k + shift2)) * rhz;
@@ -404,10 +494,10 @@ int main(int argc, char **argv) {
                 }
             }
         }
-        return std::make_pair(maxval, maxind);
+        return reduceMaxInd(maxval, maxind);
     };
 
-    auto computeRotDiff = [im, lm, km](int dim, const DDArray3 &b1, const DDArray3 &b2, const DDArray3 &j, double rh1, double rh2)
+    auto computeRotDiff = [im, lm, km, &syncShadowsI, &reduceMaxInd](int dim, DDArray3 &b1, DDArray3 &b2, const DDArray3 &j, double rh1, double rh2)
         -> std::pair<double, Index3> {
         const static Index3 i_start {0, 1, 1};
         const static Index3 l_start {1, 0, 1};
@@ -417,11 +507,22 @@ int main(int argc, char **argv) {
 
         double maxval = 0.0;
         Index3 maxind {0, 0, 0};
+
         const auto &s1 = shift1[dim];
         const auto &s2 = shift2[dim];
-        for (int k = k_start[dim]; k < km + 1; k++) {
-            for (int l = l_start[dim]; l < lm + 1; l++) {
-                for (int i = i_start[dim]; i < im + 1; i++) {
+
+        syncShadowsI(b1, s1);
+        syncShadowsI(b2, s2);
+
+        const auto i_start_l = b1.range(0).localStart(i_start[dim]);
+        const auto l_start_l = b1.range(1).localStart(l_start[dim]);
+        const auto k_start_l = b1.range(2).localStart(k_start[dim]);
+        const auto i_end_l = b1.range(0).localEnd(im + 1);
+        const auto l_end_l = b1.range(1).localEnd(lm + 1);
+        const auto k_end_l = b1.range(2).localEnd(km + 1);
+        for (int i = i_start_l; i < i_end_l; i++) {
+            for (int l = l_start_l; l < l_end_l; l++) {
+                for (int k = k_start_l; k < k_end_l; k++) {
                     const double s = (b1(i,l,k) - b1(i+s1[0],l+s1[1],k+s1[2])) * rh1 -
                                      (b2(i,l,k) - b2(i+s2[0],l+s2[1],k+s2[2])) * rh2 - j(i,l,k);
                     if (std::abs(s) > maxval) {
@@ -431,7 +532,7 @@ int main(int argc, char **argv) {
                 }
             }
         }
-        return std::make_pair(maxval, maxind);
+        return reduceMaxInd(maxval, maxind);
     };
 
     // The main program
