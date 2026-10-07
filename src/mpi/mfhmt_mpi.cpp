@@ -13,12 +13,17 @@
 #include <fstream>
 #include <cmath>
 #include <tuple>
+#include <map>
 
 using namespace std;
 
 using DDArray3 = DistributedArray3D;
+using Double3 = std::array<double, 3>;
 
 void copySliceX(DDArray3 &arr, int dst, int src, int lend, int kend) {
+    if (!arr.range(0).hasIndex(dst)) {
+        return;
+    }
     const auto dst_l = arr.range(0).toLocal(dst);
     const auto src_l = arr.range(0).toLocal(src);
     const auto l_end_l = arr.range(1).localEnd(lend);
@@ -31,6 +36,9 @@ void copySliceX(DDArray3 &arr, int dst, int src, int lend, int kend) {
 }
 
 void copySliceY(DDArray3 &arr, int dst, int src, int iend, int kend) {
+    if (!arr.range(1).hasIndex(dst)) {
+        return;
+    }
     const auto dst_l = arr.range(1).toLocal(dst);
     const auto src_l = arr.range(1).toLocal(src);
     const auto i_end_l = arr.range(0).localEnd(iend);
@@ -43,6 +51,9 @@ void copySliceY(DDArray3 &arr, int dst, int src, int iend, int kend) {
 }
 
 void copySliceZ(DDArray3 &arr, int dst, int src, int iend, int lend) {
+    if (!arr.range(2).hasIndex(dst)) {
+        return;
+    }
     const auto dst_l = arr.range(2).toLocal(dst);
     const auto src_l = arr.range(2).toLocal(src);
     const auto i_end_l = arr.range(0).localEnd(iend);
@@ -55,6 +66,9 @@ void copySliceZ(DDArray3 &arr, int dst, int src, int iend, int lend) {
 }
 
 void addSliceZ(DDArray3 &arr, int dst, int src, int iend, int lend) {
+    if (!arr.range(2).hasIndex(dst)) {
+        return;
+    }
     const auto dst_l = arr.range(2).toLocal(dst);
     const auto src_l = arr.range(2).toLocal(src);
     const auto i_end_l = arr.range(0).localEnd(iend);
@@ -150,6 +164,40 @@ int main(int argc, char **argv) {
         SHADOW_NEXT
     };
 
+    auto recvShadowsPrev = [&shadow_time](DDArray3 &arr) {
+        Timer tm;
+        auto ops = arr.recvShadowsPrev();
+        ops.wait();
+        shadow_time += tm.time();
+    };
+
+    auto recvShadowsNext = [&shadow_time](DDArray3 &arr) {
+        Timer tm;
+        auto ops = arr.recvShadowsNext();
+        ops.wait();
+        shadow_time += tm.time();
+    };
+
+    auto sendShadowsPrevAsync = [&shadow_time](DDArray3 &arr) -> AsyncOps {
+        Timer tm;
+        auto ops = arr.sendSnadowsPrev();
+        shadow_time += tm.time();
+        return ops;
+    };
+
+    auto sendShadowsNextAsync = [&shadow_time](DDArray3 &arr) -> AsyncOps {
+        Timer tm;
+        auto ops = arr.sendSnadowsNext();
+        shadow_time += tm.time();
+        return ops;
+    };
+
+    auto finishShadowSends = [&shadow_time](DDArray3 &arr) {
+        Timer tm;
+        arr.finishAllOps();
+        shadow_time += tm.time();
+    };
+
     auto syncShadows = [&shadow_time](DDArray3 &arr, ShadowSyncType type = SHADOW_ALL, int dim = -1) {
         Timer tm;
         AsyncOps ops;
@@ -178,6 +226,14 @@ int main(int argc, char **argv) {
         } else if (shift < 0) {
             syncShadows(arr, SHADOW_PREV, dim);
         }
+    };
+
+    auto reduceMax = [&reduce_time](const Double3 &value) -> Double3 {
+        Double3 global;
+        Timer tm;
+        MPI_Allreduce(value.data(), global.data(), 3, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        reduce_time += tm.time();
+        return global;
     };
 
     auto reduceMaxInd = [rank, &reduce_time](double value, const Index3 &ind) -> std::pair<double, Index3> {
@@ -358,36 +414,50 @@ int main(int argc, char **argv) {
     };
 
     auto computeBoundaryX = [im, lm, km, &comp_time](DDArray3 &ax, DDArray3 &ay, DDArray3 &az, int dst, int src1, int src2, double c1, double c2) {
+        if (!ax.range(0).hasIndex(dst)) {
+            return;
+        }
+        const auto dst_l = ax.range(0).toLocal(dst);
+        const auto src1_l = ax.range(0).toLocal(src1);
+        const auto src2_l = ax.range(0).toLocal(src2);
         const auto l_start_l = ax.range(1).localStart(1);
         const auto l_end_l = ax.range(1).localEnd(lm + 1);
         Timer tm;
         for (int l = l_start_l; l < l_end_l; l++) {
             for (int k = 1; k < km + 1; k++) {
-                ax(dst, l, k) = ax(src1, l, k) +
-                                c1 * (ay(src2, l, k) - ay(src2, l - 1, k)) +
-                                c2 * (az(src2, l, k) - az(src2, l, k - 1));
+                ax(dst_l, l, k) = ax(src1_l, l, k) +
+                                c1 * (ay(src2_l, l, k) - ay(src2_l, l - 1, k)) +
+                                c2 * (az(src2_l, l, k) - az(src2_l, l, k - 1));
             }
         }
         comp_time += tm.time();
     };
 
     auto computeBoundaryY = [im, lm, km, &comp_time](DDArray3 &ax, DDArray3 &ay, DDArray3 &az, int dst, int src1, int src2, double c1, double c2) {
+        if (!ay.range(1).hasIndex(dst)) {
+            return;
+        }
+        const auto dst_l = ay.range(1).toLocal(dst);
+        const auto src1_l = ay.range(1).toLocal(src1);
+        const auto src2_l = ay.range(1).toLocal(src2);
         const auto i_start_l = ax.range(0).localStart(1);
         const auto i_end_l = ax.range(0).localEnd(im + 1);
         Timer tm;
         for (int i = i_start_l; i < i_end_l; i++) {
             for (int k = 1; k < km + 1; k++) {
-                ay(i, dst, k) = ay(i, src1, k) +
-                                c1 * (ax(i, src2, k) - ax(i - 1, src2, k)) +
-                                c2 * (az(i, src2, k) - az(i, src2, k - 1));
+                ay(i, dst_l, k) = ay(i, src1_l, k) +
+                                c1 * (ax(i, src2_l, k) - ax(i - 1, src2_l, k)) +
+                                c2 * (az(i, src2_l, k) - az(i, src2_l, k - 1));
             }
         }
         comp_time += tm.time();
     };
 
-    auto computeStep = [rhx2, rhy2, rhz2, rc2, &syncShadows, &comp_time](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
+    auto computeStep = [rhx2, rhy2, rhz2, rc2, &recvShadowsPrev, &recvShadowsNext, &comp_time](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
+        recvShadowsNext(arr);
+        recvShadowsPrev(arr);
+        arr.finishAllOps();
         double maxdiff = 0.0;
-        syncShadows(arr, SHADOW_PREV);
         const auto i_start_l = arr.range(0).localStart(1);
         const auto i_endl = arr.range(0).localEnd(iend);
         const auto l_start_l = arr.range(1).localStart(1);
@@ -408,9 +478,11 @@ int main(int argc, char **argv) {
         return maxdiff;
     };
 
-    auto computeStepZ = [rhx2, rhy2, rhz2, rc2, &syncShadows, &comp_time](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
+    auto computeStepZ = [rhx2, rhy2, rhz2, rc2, &recvShadowsPrev, &recvShadowsNext, &comp_time](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
+        recvShadowsNext(arr);
+        recvShadowsPrev(arr);
+        arr.finishAllOps();
         double maxdiff = 0.0;
-        syncShadows(arr, SHADOW_PREV);
         const auto i_start_l = arr.range(0).localStart(1);
         const auto i_end_l = arr.range(0).localEnd(iend);
         const auto l_start_l = arr.range(1).localStart(1);
@@ -435,6 +507,134 @@ int main(int argc, char **argv) {
         }
         comp_time += tm.time();
         return maxdiff;
+    };
+
+    auto computeIterationStep = [im, lm, km, c12, c13, c21, c23, &computeStep, &computeStepZ, &computeBoundaryX, &computeBoundaryY,
+                                 &sendShadowsPrevAsync, sendShadowsNextAsync]
+        (DDArray3 &ax, DDArray3 &ay, DDArray3 &az, const DDArray3 &jx, const DDArray3 &jy, const DDArray3 &jz)
+        -> Double3 {
+        const auto sx = computeStep(ax, jx, im, lm + 1, km + 1); // Ax(1..im-1,1..lm,1..km) <- Ax(0..im,0..lm+1,0..km+1)
+
+        computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13); // x: Ax(0) <- Ay(1), Az(1) (local)
+        computeBoundaryX(ax, ay, az, im, im - 1, im, -c12, -c13); // x: Ax(im) <- Ay(im-1), Az(im) (local)
+
+        copySliceZ(ax, 0, km, im + 1, lm + 2); // z: Ax(0) <- Ax(km) (remote)
+        copySliceZ(ax, km + 1, 1, im + 1, lm + 2); // z: Ax(km+1) <- Ax(1) (remote)
+
+        copySliceY(ax, 0, 1, im + 1, km + 2); // y: Ax(0) <- Ax(1) (local)
+        copySliceY(ax, lm + 1, lm, im + 1, km + 2); // y: Ax(lm+1) <- Ax(lm) (local)
+
+        sendShadowsNextAsync(ax);
+        sendShadowsPrevAsync(ax);
+
+        const auto sy = computeStep(ay, jy, im + 1, lm, km + 1); // Ay(1..im,1..lm-1,1..km) <- Ay(0..im+1,0..lm,0..km+1)
+
+        computeBoundaryY(ax, ay, az, 0, 1, 1, c21, c23); // y: Ay(0) <- Ax(1), Ay(1) (local)
+        computeBoundaryY(ax, ay, az, lm, lm - 1, lm, -c21, -c23); // y: Ay(lm) <- Ax(lm-1), Az(lm) (local)
+
+        copySliceZ(ay, 0, km, im + 1, lm + 1); // z: Ay(0) <- Ay(km) (remote)
+        copySliceZ(ay, km + 1, 1, im + 1, lm + 1); // z: Ay(km+1) <- Ay(1) (remote)
+
+        copySliceX(ay, 0, 1, lm + 1, km + 2); // x: Ay(0) <- Ay(1) (local)
+        copySliceX(ay, im + 1, im, lm + 1, km + 2); // x: Ay(im+1) <- Ay(im) (local)
+
+        sendShadowsNextAsync(ay);
+        sendShadowsPrevAsync(ay);
+
+        const auto sz = computeStepZ(az, jz, im + 1, lm + 1, km); // Az(1..im,1..lm,0..km) <- Az(0..im+1,0..lm+1,0..km)
+
+        copySliceZ(az, 0, km, im + 2, lm + 2); // z: Az(0) <- Az(km) (remote)
+        copySliceZ(az, km+1, 1, im + 2, lm + 2); // z: Az(km+1) <- Az(1) (remote)
+
+        sendShadowsNextAsync(az);
+        sendShadowsPrevAsync(az);
+
+        return Double3 {sx, sy, sz};
+    };
+
+    auto computeIterationStepEmpty = [&recvShadowsPrev, &recvShadowsNext, &sendShadowsPrevAsync, sendShadowsNextAsync]
+        (DDArray3 &ax, DDArray3 &ay, DDArray3 &az) {
+        recvShadowsNext(ax);
+        recvShadowsPrev(ax);
+        recvShadowsNext(ay);
+        recvShadowsPrev(ay);
+        recvShadowsNext(az);
+        recvShadowsPrev(az);
+    };
+
+    auto computeA = [screen_output, eps, &cart_tp, &computeIterationStep, &computeIterationStepEmpty, &sendShadowsNextAsync, &finishShadowSends, &reduceMax]
+        (DDArray3 &ax, DDArray3 &ay, DDArray3 &az, const DDArray3 &jx, const DDArray3 &jy, const DDArray3 &jz) -> std::pair<int, Double3> {
+        const auto max_iter_depth = cart_tp.dim(0) + cart_tp.dim(1) + cart_tp.dim(2) - 2;
+        const auto my_coord = cart_tp.thisCoord();
+        const auto my_rank = cart_tp.thisRank();
+        const auto my_iter_depth = max_iter_depth - (my_coord[0] + my_coord[1] + my_coord[2]);
+
+        const size_t buf_size = my_iter_depth;
+        std::vector<DDArray3> ax_buf, ay_buf, az_buf;
+        std::vector<Double3> diff_buf(buf_size);
+        for (int i = 0; i < buf_size; i++) {
+            ax_buf.push_back(ax);
+            ay_buf.push_back(ay);
+            az_buf.push_back(az);
+        }
+
+        int iter = 0, done_iter = 0;
+        Double3 max_diff;
+        size_t curr_buf_pos = 0;
+        bool do_iter = true;
+        int finishing = max_iter_depth - my_iter_depth;
+
+        sendShadowsNextAsync(ax_buf[curr_buf_pos]);
+        sendShadowsNextAsync(ay_buf[curr_buf_pos]);
+        sendShadowsNextAsync(az_buf[curr_buf_pos]);
+
+        do {
+            auto &ax_curr = ax_buf[curr_buf_pos];
+            auto &ay_curr = ay_buf[curr_buf_pos];
+            auto &az_curr = az_buf[curr_buf_pos];
+
+            done_iter++;
+            const auto diff = computeIterationStep(ax_curr, ay_curr, az_curr, jx, jy, jz);
+            diff_buf[curr_buf_pos] = diff;
+
+            //std::cout << my_rank << ": done " << done_iter << " " << diff[0] << " " << diff[1] << " " << diff[2] << std::endl;
+
+            if (done_iter >= my_iter_depth) {
+                iter++;
+                const size_t reduce_pos = (iter - 1) % buf_size;
+                max_diff = reduceMax(diff_buf[reduce_pos]);
+                do_iter = (max_diff[0] > eps || max_diff[1] > eps || max_diff[2] > eps);
+
+                if (screen_output && my_rank == 0) {
+                    std::cout << iter << " " << max_diff[0] << " " << max_diff[1] << " " << max_diff[2] << std::endl;
+                }
+            }
+
+            if (do_iter) {
+                const size_t next_buf_pos = (curr_buf_pos + 1) % buf_size;
+                finishShadowSends(ax_buf[next_buf_pos]);
+                finishShadowSends(ay_buf[next_buf_pos]);
+                finishShadowSends(az_buf[next_buf_pos]);
+                if (next_buf_pos != curr_buf_pos) {
+                    ax_buf[next_buf_pos].copy(ax_curr);
+                    ay_buf[next_buf_pos].copy(ay_curr);
+                    az_buf[next_buf_pos].copy(az_curr);
+                }
+                curr_buf_pos = next_buf_pos;
+            }
+        } while (do_iter);
+
+        while (finishing > 0) {
+            computeIterationStepEmpty(ax, ay, az);
+            finishing--;
+        }
+
+        const size_t solution_pos = (iter - 1) % buf_size;
+        ax.copy(ax_buf[solution_pos]);
+        ay.copy(ay_buf[solution_pos]);
+        az.copy(az_buf[solution_pos]);
+
+        return std::make_pair(iter, max_diff);
     };
 
     auto computeB = [im, lm, km, &syncShadowsI, &comp_time](int dim, DDArray3 &a1, DDArray3 &a2, DDArray3 &b, double rh1, double rh2) {
@@ -561,45 +761,11 @@ int main(int argc, char **argv) {
     updateCurrent(jx, jy, jz);
 
     int iter = 0;
-    double sx = 0.0, sy = 0.0, sz = 0.0;
-
-    do {
-        iter++;
-
-        sx = computeStep(ax, jx, im, lm + 1, km + 1); // Ax(1..im-1,1..lm,1..km) <- Ax(0..im,0..lm+1,0..km+1)
-
-        computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13); // x: Ax(0) <- Ay(1), Az(1) (local)
-        computeBoundaryX(ax, ay, az, im, im - 1, im, -c12, -c13); // x: Ax(im) <- Ay(im-1), Az(im) (local)
-
-        copySliceZ(ax, 0, km, im + 1, lm + 2); // z: Ax(0) <- Ax(km) (remote)
-        copySliceZ(ax, km + 1, 1, im + 1, lm + 2); // z: Ax(km+1) <- Ax(1) (remote)
-
-        copySliceY(ax, 0, 1, im + 1, km + 2); // y: Ax(0) <- Ax(1) (local)
-        copySliceY(ax, lm + 1, lm, im + 1, km + 2); // y: Ax(lm+1) <- Ax(lm) (local)
-
-        sy = computeStep(ay, jy, im + 1, lm, km + 1); // Ay(1..im,1..lm-1,1..km) <- Ay(0..im+1,0..lm,0..km+1)
-
-        computeBoundaryY(ax, ay, az, 0, 1, 1, c21, c23); // y: Ay(0) <- Ax(1), Ay(1) (local)
-        computeBoundaryY(ax, ay, az, lm, lm - 1, lm, -c21, -c23); // y: Ay(lm) <- Ax(lm-1), Az(lm) (local)
-
-        copySliceZ(ay, 0, km, im + 1, lm + 1); // z: Ay(0) <- Ay(km) (remote)
-        copySliceZ(ay, km + 1, 1, im + 1, lm + 1); // z: Ay(km+1) <- Ay(1) (remote)
-
-        copySliceX(ay, 0, 1, lm + 1, km + 2); // x: Ay(0) <- Ay(1) (local)
-        copySliceX(ay, im + 1, im, lm + 1, km + 2); // x: Ay(im+1) <- Ay(im) (local)
-
-        sz = computeStepZ(az, jz, im + 1, lm + 1, km); // Az(1..im,1..lm,0..km) <- Az(0..im+1,0..lm+1,0..km)
-
-        copySliceZ(az, 0, km, im + 2, lm + 2); // z: Az(0) <- Az(km) (remote)
-        copySliceZ(az, km+1, 1, im + 2, lm + 2); // z: Az(km+1) <- Az(1) (remote)
-
-        if (screen_output) {
-            std::cout << iter << " " << sx << " " << sy << " " << sz << std::endl;
-        }
-    } while (sx > eps || sy > eps || sz > eps);
+    Double3 max_diff;
+    std::tie(iter, max_diff) = computeA(ax, ay, az, jx, jy, jz);
 
     if (file_output && rank == 0) {
-        out_lst << "n,sx,sy,sz=" << formatI(iter) << formatS(sx) << formatS(sy) << formatS(sz) << std::endl;
+        out_lst << "n,sx,sy,sz=" << formatI(iter) << formatS(max_diff[0]) << formatS(max_diff[1]) << formatS(max_diff[2]) << std::endl;
     }
 
     computeB(0, az, ay, bx, rhy, rhz);
@@ -653,6 +819,29 @@ int main(int argc, char **argv) {
     gatherAndOutput("bx.dat", bx, im + 2, lm + 1, km + 1);
     gatherAndOutput("by.dat", by, im + 1, lm + 2, km + 1);
     gatherAndOutput("bz.dat", bz, im + 1, lm + 1, km + 2);
+
+    /*BlockDecomposition3D dd(8, cart_tp.dim(0), 8, cart_tp.dim(1), 1, 1);
+    DDArray3 tmp(dd, cart_tp), tmp2(dd, cart_tp);
+    for (int i = 0; i < tmp.range(0).localEnd(8);i++)
+        for (int j = 0; j < tmp.range(1).localEnd(8);j++)
+        {
+            const auto ii = tmp.range(0).toGlobal(i);
+            const auto jj = tmp.range(1).toGlobal(j);
+            tmp(i,j,0) = ii + jj;
+        }
+
+    tmp.sendSnadowsPrev();
+    tmp.recvShadowsPrev();
+    tmp.finishAllOps();
+
+    for (int i = tmp.range(0).localStart(1); i < tmp.range(0).localEnd(8);i++)
+        for (int j = tmp.range(1).localStart(1); j < tmp.range(1).localEnd(8);j++)
+        {
+            tmp2(i,j,0) = tmp(i,j,0) + tmp(i-1,j,0) + tmp(i,j-1,0);
+        }
+
+    gatherAndOutput("tmp.dat", tmp, 8, 8, 1);
+    gatherAndOutput("tmp2.dat", tmp2, 8, 8, 1);*/
 
     MPI_Finalize();
 

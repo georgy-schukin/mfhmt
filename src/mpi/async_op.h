@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <vector>
+#include <iostream>
 
 #include <mpi.h>
 
@@ -12,12 +13,21 @@ public:
         Request(MPI_Request req) :
             request(req) {
         }
+
         ~Request() {
             wait();
         }
+
         void wait() {
+            if (!finished) {                                
+                MPI_Wait(&request, MPI_STATUS_IGNORE);                
+                finished = true;
+            }
+        }
+
+        void cancel() {
             if (!finished) {
-                MPI_Wait(&request, MPI_STATUS_IGNORE);
+                MPI_Cancel(&request);
                 finished = true;
             }
         }
@@ -38,6 +48,13 @@ public:
             req_handle = nullptr;
         }
     }
+
+    void cancel() {
+        if (req_handle) {
+            req_handle->cancel();
+            req_handle = nullptr;
+        }
+    }
 private:
     std::shared_ptr<Request> req_handle;
 };
@@ -51,18 +68,31 @@ public:
     }
 
     void add(const AsyncOps &ops) {
-        _ops.insert(_ops.end(), ops._ops.begin(), ops._ops.end());
+        if (ops.size() > 0) {
+            _ops.insert(_ops.end(), ops._ops.begin(), ops._ops.end());
+        }
     }
 
     void add(MPI_Request req) {
         add(AsyncOp(req));
     }
 
-    void wait() {
+    void wait() {        
         for (auto &op: _ops) {
             op.wait();
         }
         _ops.clear();
+    }
+
+    void cancel() {
+        for (auto &op: _ops) {
+            op.cancel();
+        }
+        _ops.clear();
+    }
+
+    size_t size() const {
+        return _ops.size();
     }
 
 private:

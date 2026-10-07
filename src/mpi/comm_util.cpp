@@ -52,17 +52,17 @@ MPI_Datatype makeSliceXType(const DArray3 &array) {
 
 MPI_Datatype makeSliceYType(const DArray3 &array) {
     // Slice in XZ plane
-    auto y_row_type = makeBlockType(array.size(2), array.fullSize(2));
-    auto y_slice_type = makeVectorTypeT(y_row_type, array.size(0), 1, array.fullSize(1) * array.fullSize(2) * sizeof(double), array.fullSize(2) * sizeof(double));
-    MPI_Type_free(&y_row_type);
+    auto z_col_type = makeVectorType(array.size(2), 1, array.fullSize(1));
+    auto y_slice_type = makeVectorTypeT(z_col_type, array.size(0), 1, array.fullSize(1) * array.fullSize(2) * sizeof(double));
+    MPI_Type_free(&z_col_type);
     return y_slice_type;
 }
 
 MPI_Datatype makeSliceZType(const DArray3 &array) {
     // Slice in XY plane
-    auto z_col_type = makeVectorType(array.size(1), 1, array.fullSize(2));
-    auto z_slice_type = makeVectorTypeT(z_col_type, array.size(0), 1, array.fullSize(1) * array.fullSize(2) * sizeof(double), sizeof(double));
-    MPI_Type_free(&z_col_type);
+    auto y_row_type = makeBlockType(array.size(2));
+    auto z_slice_type = makeVectorTypeT(y_row_type, array.size(0), 1, array.fullSize(1) * array.fullSize(2) * sizeof(double));
+    MPI_Type_free(&y_row_type);
     return z_slice_type;
 }
 
@@ -102,7 +102,6 @@ DArray3 gatherArray(const DArray3 &local_data, const BlockDecomposition3D &decom
         const auto fx = decomp.decomp(0).fullSize();
         const auto fy = decomp.decomp(1).fullSize();
         const auto fz = decomp.decomp(2).fullSize();
-        std::cout << fx << " " << fy << " " << fz << std::endl;
         data = DArray3(fx, fy, fz);
         for (int i = 0; i < tp.dim(0); i++) {
             for (int j = 0; j < tp.dim(1); j++) {
@@ -116,8 +115,6 @@ DArray3 gatherArray(const DArray3 &local_data, const BlockDecomposition3D &decom
                     const auto dst_x = decomp.decomp(0).blockShift(i);
                     const auto dst_y = decomp.decomp(1).blockShift(j);
                     const auto dst_z = decomp.decomp(2).blockShift(k);
-                    std::cout << src_rank << ": " << src_sx << " " << src_sy << " " << src_sz <<
-                        ", " << dst_x << " " << dst_y << " " << dst_z << std::endl;
                     MPI_Irecv(&data(dst_x, dst_y, dst_z), 1, recv_type, src_rank, TAG_GATHER, tp.mpiComm(), &rreq);
                     MPI_Type_free(&recv_type);
                     ops.add(rreq);

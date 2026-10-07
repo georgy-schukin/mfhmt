@@ -116,11 +116,27 @@ public:
     AsyncOps syncShadows(size_t dim);
     AsyncOps syncShadowsPrev(size_t dim);
     AsyncOps syncShadowsNext(size_t dim);
+
     AsyncOps syncShadows();
     AsyncOps syncShadowsPrev();
     AsyncOps syncShadowsNext();
 
+    AsyncOps sendSnadowsPrev(size_t dim);
+    AsyncOps sendSnadowsNext(size_t dim);
+    AsyncOps recvShadowsPrev(size_t dim);
+    AsyncOps recvShadowsNext(size_t dim);
+
+    AsyncOps sendSnadowsPrev();
+    AsyncOps sendSnadowsNext();
+    AsyncOps recvShadowsPrev();
+    AsyncOps recvShadowsNext();
+
     DArray3 gather(int dst_rank = 0) const;
+
+    void copy(const DistributedArray3D &arr);
+
+    void finishAllOps();
+    void cancelAllOps();
 
 private:
     int getShadowSize(const BlockDecomposition &dec) const {
@@ -134,4 +150,5 @@ private:
     std::array<BlockDecomposition::Range, 3> _ranges;
     Index3 _index;
     std::array<MPI_Datatype, 3> _slice_types;
+    AsyncOps _current_ops;
 };
