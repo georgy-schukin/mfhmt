@@ -19,7 +19,7 @@ MPI_Datatype makeSliceZType(const DArray3 &array);
 MPI_Datatype makeDataBlockType(const DArray3 &array);
 MPI_Datatype makeDataBlockType(int sx, int sy, int sz, int fx, int fy, int fz);
 
-AsyncOp sendSlice(DArray3 &arr, const Index3 &src_index, MPI_Datatype slice_type, int neigh_rank, MPI_Comm comm);
-AsyncOp recvSlice(DArray3 &arr, const Index3 &dst_index, MPI_Datatype slice_type, int neigh_rank, MPI_Comm comm);
+AsyncOp sendSlice(DArray3 &arr, const Index3 &src_index, MPI_Datatype slice_type, int neigh_rank, int tag, MPI_Comm comm);
+AsyncOp recvSlice(DArray3 &arr, const Index3 &dst_index, MPI_Datatype slice_type, int neigh_rank, int tag, MPI_Comm comm);
 
-DArray3 gatherArray(const DArray3 &local_data, const BlockDecomposition3D &decomp, const CartTopology<3> &tp, int root = 0);
+DArray3 gatherArray(const DArray3 &local_data, const BlockDecomposition3D &decomp, const CartTopology<3> &tp, int tag, int root = 0);

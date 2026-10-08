@@ -62,7 +62,7 @@ public:
 
     template <typename Index>
     size_t atRaw(Index x, Index y, Index z) const {
-        return (x) * _size[1] * _size[2] + (y) * _size[2] + z;
+        return (x) * fullSize(1) * fullSize(2) + (y) * fullSize(2) + z;
     }
 
     T& operator[](size_t index) {

@@ -3,16 +3,6 @@
 #include <exception>
 #include <stdexcept>
 
-namespace {
-
-enum Tags: int {
-    TAG_SLICE = 0,
-    TAG_GATHER,
-    TAG_SCATTER
-};
-
-}
-
 MPI_Datatype makeVectorTypeT(MPI_Datatype src_type, int num_of_blocks, int block_size, MPI_Aint stride, int extent) {
     MPI_Datatype type, vtype;
     MPI_Type_create_hvector(num_of_blocks, block_size, stride, src_type, &type);
@@ -52,17 +42,17 @@ MPI_Datatype makeSliceXType(const DArray3 &array) {
 
 MPI_Datatype makeSliceYType(const DArray3 &array) {
     // Slice in XZ plane
-    auto z_col_type = makeVectorType(array.size(2), 1, array.fullSize(1));
-    auto y_slice_type = makeVectorTypeT(z_col_type, array.size(0), 1, array.fullSize(1) * array.fullSize(2) * sizeof(double));
-    MPI_Type_free(&z_col_type);
+    auto y_row_type = makeBlockType(array.size(2));
+    auto y_slice_type = makeVectorTypeT(y_row_type, array.size(0), 1, array.fullSize(1) * array.fullSize(2) * sizeof(double));
+    MPI_Type_free(&y_row_type);
     return y_slice_type;
 }
 
 MPI_Datatype makeSliceZType(const DArray3 &array) {
     // Slice in XY plane
-    auto y_row_type = makeBlockType(array.size(2));
-    auto z_slice_type = makeVectorTypeT(y_row_type, array.size(0), 1, array.fullSize(1) * array.fullSize(2) * sizeof(double));
-    MPI_Type_free(&y_row_type);
+    auto z_col_type = makeVectorType(array.size(2), 1, array.fullSize(1));
+    auto z_slice_type = makeVectorTypeT(z_col_type, array.size(0), 1, array.fullSize(1) * array.fullSize(2) * sizeof(double));
+    MPI_Type_free(&z_col_type);
     return z_slice_type;
 }
 
@@ -77,23 +67,23 @@ MPI_Datatype makeDataBlockType(int sx, int sy, int sz, int fx, int fy, int fz) {
     return data_block_type;
 }
 
-AsyncOp sendSlice(DArray3 &arr, const Index3 &src_index, MPI_Datatype slice_type, int neigh_rank, MPI_Comm comm) {
+AsyncOp sendSlice(DArray3 &arr, const Index3 &src_index, MPI_Datatype slice_type, int neigh_rank, int tag, MPI_Comm comm) {
     MPI_Request req;
-    MPI_Isend(&arr(src_index[0], src_index[1], src_index[2]), 1, slice_type, neigh_rank, TAG_SLICE, comm, &req);
+    MPI_Isend(&arr(src_index[0], src_index[1], src_index[2]), 1, slice_type, neigh_rank, tag, comm, &req);
     return AsyncOp(req);
 }
 
-AsyncOp recvSlice(DArray3 &arr, const Index3 &dst_index, MPI_Datatype slice_type, int neigh_rank, MPI_Comm comm) {
+AsyncOp recvSlice(DArray3 &arr, const Index3 &dst_index, MPI_Datatype slice_type, int neigh_rank, int tag, MPI_Comm comm) {
     MPI_Request req;
-    MPI_Irecv(&arr(dst_index[0], dst_index[1], dst_index[2]), 1, slice_type, neigh_rank, TAG_SLICE, comm, &req);
+    MPI_Irecv(&arr(dst_index[0], dst_index[1], dst_index[2]), 1, slice_type, neigh_rank, tag, comm, &req);
     return AsyncOp(req);
 }
 
-DArray3 gatherArray(const DArray3 &local_data, const BlockDecomposition3D &decomp, const CartTopology<3> &tp, int root) {
+DArray3 gatherArray(const DArray3 &local_data, const BlockDecomposition3D &decomp, const CartTopology<3> &tp, int tag, int root) {
     AsyncOps ops;
     auto send_type = makeDataBlockType(local_data);
     MPI_Request sreq;
-    MPI_Isend(&local_data(0, 0, 0), 1, send_type, root, TAG_GATHER, tp.mpiComm(), &sreq);
+    MPI_Isend(&local_data(0, 0, 0), 1, send_type, root, tag, tp.mpiComm(), &sreq);
     MPI_Type_free(&send_type);
     ops.add(sreq);
 
@@ -115,7 +105,7 @@ DArray3 gatherArray(const DArray3 &local_data, const BlockDecomposition3D &decom
                     const auto dst_x = decomp.decomp(0).blockShift(i);
                     const auto dst_y = decomp.decomp(1).blockShift(j);
                     const auto dst_z = decomp.decomp(2).blockShift(k);
-                    MPI_Irecv(&data(dst_x, dst_y, dst_z), 1, recv_type, src_rank, TAG_GATHER, tp.mpiComm(), &rreq);
+                    MPI_Irecv(&data(dst_x, dst_y, dst_z), 1, recv_type, src_rank, tag, tp.mpiComm(), &rreq);
                     MPI_Type_free(&recv_type);
                     ops.add(rreq);
                 }

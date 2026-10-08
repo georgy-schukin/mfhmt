@@ -1,6 +1,16 @@
 #include "distributed_array3d.h"
 #include "comm_util.h"
 
+namespace {
+
+enum Tags: int {
+    TAG_PREV = 0,
+    TAG_NEXT = 1000,
+    TAG_GATHER = 2000
+};
+
+}
+
 DistributedArray3D::DistributedArray3D(const BlockDecomposition3D &decomp, const CartTopology<3> &tp) :
     _decomp(decomp),
     _topology(tp) {
@@ -93,28 +103,28 @@ AsyncOps DistributedArray3D::recvShadowsNext() {
     return ops;
 }
 
-AsyncOps DistributedArray3D::sendSnadowsNext(size_t dim) {
-    AsyncOps ops;
-    // Send data to prev rank
-    if (_topology.hasPrevNeighbor(dim)) {
-        Index3 data_index {0, 0, 0};
-        auto op = sendSlice(_data, data_index, _slice_types[dim], _topology.prevNeighborRank(dim), _topology.mpiComm());
-        _current_ops.add(op);
-        //std::cout << rank() << " new send op prev to " << _topology.prevNeighborRank(dim) << std::endl;
-        ops.add(op);
-    }
-    return ops;
-}
-
 AsyncOps DistributedArray3D::sendSnadowsPrev(size_t dim) {
     AsyncOps ops;
     // Send data to next rank
     if (_topology.hasNextNeighbor(dim)) {
         Index3 data_index {0, 0, 0};
         data_index[dim] = _data.size(dim) - 1;
-        auto op = sendSlice(_data, data_index, _slice_types[dim], _topology.nextNeighborRank(dim), _topology.mpiComm());
+        auto op = sendSlice(_data, data_index, _slice_types[dim], _topology.nextNeighborRank(dim), TAG_PREV + dim, _topology.mpiComm());
         _current_ops.add(op);
         //std::cout << rank() << " new send op next to " <<  _topology.nextNeighborRank(dim) << std::endl;
+        ops.add(op);
+    }
+    return ops;
+}
+
+AsyncOps DistributedArray3D::sendSnadowsNext(size_t dim) {
+    AsyncOps ops;
+    // Send data to prev rank
+    if (_topology.hasPrevNeighbor(dim)) {
+        Index3 data_index {0, 0, 0};
+        auto op = sendSlice(_data, data_index, _slice_types[dim], _topology.prevNeighborRank(dim), TAG_NEXT + dim, _topology.mpiComm());
+        _current_ops.add(op);
+        //std::cout << rank() << " new send op prev to " << _topology.prevNeighborRank(dim) << std::endl;
         ops.add(op);
     }
     return ops;
@@ -126,7 +136,7 @@ AsyncOps DistributedArray3D::recvShadowsPrev(size_t dim) {
     if (_topology.hasPrevNeighbor(dim)) {
         Index3 shadow_index {0, 0, 0};
         shadow_index[dim] = -1;
-        auto op = recvSlice(_data, shadow_index, _slice_types[dim], _topology.prevNeighborRank(dim), _topology.mpiComm());
+        auto op = recvSlice(_data, shadow_index, _slice_types[dim], _topology.prevNeighborRank(dim), TAG_PREV + dim, _topology.mpiComm());
         _current_ops.add(op);
         //std::cout << rank() << " new recv op prev from " << _topology.prevNeighborRank(dim) << std::endl;
         ops.add(op);
@@ -140,7 +150,7 @@ AsyncOps DistributedArray3D::recvShadowsNext(size_t dim) {
     if (_topology.hasNextNeighbor(dim)) {
         Index3 shadow_index {0, 0, 0};
         shadow_index[dim] = _data.size(dim);
-        auto op = recvSlice(_data, shadow_index, _slice_types[dim], _topology.nextNeighborRank(dim), _topology.mpiComm());
+        auto op = recvSlice(_data, shadow_index, _slice_types[dim], _topology.nextNeighborRank(dim), TAG_NEXT + dim, _topology.mpiComm());
         _current_ops.add(op);
         //std::cout << rank() << " new recv op next from " << _topology.nextNeighborRank(dim) << std::endl;
         ops.add(op);
@@ -149,7 +159,7 @@ AsyncOps DistributedArray3D::recvShadowsNext(size_t dim) {
 }
 
 DArray3 DistributedArray3D::gather(int dst_rank) const {
-    return gatherArray(localArray(), _decomp, _topology, dst_rank);
+    return gatherArray(localArray(), _decomp, _topology, TAG_GATHER, dst_rank);
 }
 
 void DistributedArray3D::copy(const DistributedArray3D &arr) {

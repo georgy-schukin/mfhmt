@@ -513,6 +513,10 @@ int main(int argc, char **argv) {
                                  &sendShadowsPrevAsync, sendShadowsNextAsync]
         (DDArray3 &ax, DDArray3 &ay, DDArray3 &az, const DDArray3 &jx, const DDArray3 &jy, const DDArray3 &jz)
         -> Double3 {
+        //sendShadowsNextAsync(ax);
+        //sendShadowsNextAsync(ay);
+        //sendShadowsNextAsync(az);
+
         const auto sx = computeStep(ax, jx, im, lm + 1, km + 1); // Ax(1..im-1,1..lm,1..km) <- Ax(0..im,0..lm+1,0..km+1)
 
         computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13); // x: Ax(0) <- Ay(1), Az(1) (local)
@@ -556,13 +560,22 @@ int main(int argc, char **argv) {
         (DDArray3 &ax, DDArray3 &ay, DDArray3 &az) {
         recvShadowsNext(ax);
         recvShadowsPrev(ax);
+        sendShadowsNextAsync(ax);
+        sendShadowsPrevAsync(ax);
+
         recvShadowsNext(ay);
         recvShadowsPrev(ay);
+        sendShadowsNextAsync(ay);
+        sendShadowsPrevAsync(ay);
+
         recvShadowsNext(az);
         recvShadowsPrev(az);
+        sendShadowsNextAsync(az);
+        sendShadowsPrevAsync(az);
     };
 
-    auto computeA = [screen_output, eps, &cart_tp, &computeIterationStep, &computeIterationStepEmpty, &sendShadowsNextAsync, &finishShadowSends, &reduceMax]
+    auto computeA = [screen_output, eps, &cart_tp, &computeIterationStep, &computeIterationStepEmpty,
+                     &sendShadowsNextAsync, &finishShadowSends, &recvShadowsNext, &reduceMax]
         (DDArray3 &ax, DDArray3 &ay, DDArray3 &az, const DDArray3 &jx, const DDArray3 &jy, const DDArray3 &jz) -> std::pair<int, Double3> {
         const auto max_iter_depth = cart_tp.dim(0) + cart_tp.dim(1) + cart_tp.dim(2) - 2;
         const auto my_coord = cart_tp.thisCoord();
@@ -570,34 +583,23 @@ int main(int argc, char **argv) {
         const auto my_iter_depth = max_iter_depth - (my_coord[0] + my_coord[1] + my_coord[2]);
 
         const size_t buf_size = my_iter_depth;
-        std::vector<DDArray3> ax_buf, ay_buf, az_buf;
         std::vector<Double3> diff_buf(buf_size);
-        for (int i = 0; i < buf_size; i++) {
-            ax_buf.push_back(ax);
-            ay_buf.push_back(ay);
-            az_buf.push_back(az);
-        }
+        size_t curr_buf_pos = 0;
 
         int iter = 0, done_iter = 0;
-        Double3 max_diff;
-        size_t curr_buf_pos = 0;
         bool do_iter = true;
+        Double3 max_diff;
         int finishing = max_iter_depth - my_iter_depth;
 
-        sendShadowsNextAsync(ax_buf[curr_buf_pos]);
-        sendShadowsNextAsync(ay_buf[curr_buf_pos]);
-        sendShadowsNextAsync(az_buf[curr_buf_pos]);
+        sendShadowsNextAsync(ax);
+        sendShadowsNextAsync(ay);
+        sendShadowsNextAsync(az);
 
         do {
-            auto &ax_curr = ax_buf[curr_buf_pos];
-            auto &ay_curr = ay_buf[curr_buf_pos];
-            auto &az_curr = az_buf[curr_buf_pos];
-
             done_iter++;
-            const auto diff = computeIterationStep(ax_curr, ay_curr, az_curr, jx, jy, jz);
-            diff_buf[curr_buf_pos] = diff;
 
-            //std::cout << my_rank << ": done " << done_iter << " " << diff[0] << " " << diff[1] << " " << diff[2] << std::endl;
+            const auto diff = computeIterationStep(ax, ay, az, jx, jy, jz);
+            diff_buf[curr_buf_pos] = diff;
 
             if (done_iter >= my_iter_depth) {
                 iter++;
@@ -610,29 +612,20 @@ int main(int argc, char **argv) {
                 }
             }
 
-            if (do_iter) {
-                const size_t next_buf_pos = (curr_buf_pos + 1) % buf_size;
-                finishShadowSends(ax_buf[next_buf_pos]);
-                finishShadowSends(ay_buf[next_buf_pos]);
-                finishShadowSends(az_buf[next_buf_pos]);
-                if (next_buf_pos != curr_buf_pos) {
-                    ax_buf[next_buf_pos].copy(ax_curr);
-                    ay_buf[next_buf_pos].copy(ay_curr);
-                    az_buf[next_buf_pos].copy(az_curr);
-                }
-                curr_buf_pos = next_buf_pos;
-            }
+            curr_buf_pos = (curr_buf_pos + 1) % buf_size;
         } while (do_iter);
 
-        while (finishing > 0) {
+        while (finishing-- > 0) {
             computeIterationStepEmpty(ax, ay, az);
-            finishing--;
         }
 
-        const size_t solution_pos = (iter - 1) % buf_size;
-        ax.copy(ax_buf[solution_pos]);
-        ay.copy(ay_buf[solution_pos]);
-        az.copy(az_buf[solution_pos]);
+        recvShadowsNext(ax);
+        recvShadowsNext(ay);
+        recvShadowsNext(az);
+
+        finishShadowSends(ax);
+        finishShadowSends(ay);
+        finishShadowSends(az);
 
         return std::make_pair(iter, max_diff);
     };
@@ -819,29 +812,6 @@ int main(int argc, char **argv) {
     gatherAndOutput("bx.dat", bx, im + 2, lm + 1, km + 1);
     gatherAndOutput("by.dat", by, im + 1, lm + 2, km + 1);
     gatherAndOutput("bz.dat", bz, im + 1, lm + 1, km + 2);
-
-    /*BlockDecomposition3D dd(8, cart_tp.dim(0), 8, cart_tp.dim(1), 1, 1);
-    DDArray3 tmp(dd, cart_tp), tmp2(dd, cart_tp);
-    for (int i = 0; i < tmp.range(0).localEnd(8);i++)
-        for (int j = 0; j < tmp.range(1).localEnd(8);j++)
-        {
-            const auto ii = tmp.range(0).toGlobal(i);
-            const auto jj = tmp.range(1).toGlobal(j);
-            tmp(i,j,0) = ii + jj;
-        }
-
-    tmp.sendSnadowsPrev();
-    tmp.recvShadowsPrev();
-    tmp.finishAllOps();
-
-    for (int i = tmp.range(0).localStart(1); i < tmp.range(0).localEnd(8);i++)
-        for (int j = tmp.range(1).localStart(1); j < tmp.range(1).localEnd(8);j++)
-        {
-            tmp2(i,j,0) = tmp(i,j,0) + tmp(i-1,j,0) + tmp(i,j-1,0);
-        }
-
-    gatherAndOutput("tmp.dat", tmp, 8, 8, 1);
-    gatherAndOutput("tmp2.dat", tmp2, 8, 8, 1);*/
 
     MPI_Finalize();
 
