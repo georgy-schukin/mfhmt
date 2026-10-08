@@ -453,32 +453,8 @@ int main(int argc, char **argv) {
         comp_time += tm.time();
     };
 
-    auto computeStep = [rhx2, rhy2, rhz2, rc2, &recvShadowsPrev, &recvShadowsNext, &comp_time](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
-        recvShadowsNext(arr);
-        recvShadowsPrev(arr);
-        arr.finishAllOps();
-        double maxdiff = 0.0;
-        const auto i_start_l = arr.range(0).localStart(1);
-        const auto i_endl = arr.range(0).localEnd(iend);
-        const auto l_start_l = arr.range(1).localStart(1);
-        const auto l_end_l = arr.range(1).localEnd(lend);
-        Timer tm;
-        for (int i = i_start_l; i < i_endl; i++) {
-            for (int l = l_start_l; l < l_end_l; l++) {
-                for (int k = 1; k < kend; k++) {
-                    const double s = ((arr(i+1,l,k) + arr(i-1,l,k)) * rhx2 +
-                                      (arr(i,l+1,k) + arr(i,l-1,k)) * rhy2 +
-                                      (arr(i,l,k+1) + arr(i,l,k-1)) * rhz2 + j(i,l,k)) * rc2;
-                    maxdiff = std::max(std::abs(arr(i,l,k) - s), maxdiff);
-                    arr(i,l,k) = s;
-                }
-            }
-        }
-        comp_time += tm.time();
-        return maxdiff;
-    };
-
-    auto computeStepZ = [rhx2, rhy2, rhz2, rc2, &recvShadowsPrev, &recvShadowsNext, &comp_time](DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend) -> double {
+    auto computeStep = [rhx2, rhy2, rhz2, rc2, &recvShadowsPrev, &recvShadowsNext, &comp_time]
+        (DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend, bool compute_kend = false) -> double {
         recvShadowsNext(arr);
         recvShadowsPrev(arr);
         arr.finishAllOps();
@@ -497,26 +473,24 @@ int main(int argc, char **argv) {
                     maxdiff = std::max(std::abs(arr(i,l,k) - s), maxdiff);
                     arr(i,l,k) = s;
                 }
-                const double s = ((arr(i+1,l,kend) + arr(i-1,l,kend)) * rhx2 +
-                                  (arr(i,l+1,kend) + arr(i,l-1,kend)) * rhy2 +
-                                  (arr(i,l,1) + arr(i,l,kend-1)) * rhz2 + j(i,l,kend)) * rc2;
-                maxdiff = std::max(std::abs(arr(i,l,kend) - s), maxdiff);
-                arr(i,l,kend) = s;
-                arr(i,l,0) = s;
+                if (compute_kend) {
+                    const double s = ((arr(i+1,l,kend) + arr(i-1,l,kend)) * rhx2 +
+                                      (arr(i,l+1,kend) + arr(i,l-1,kend)) * rhy2 +
+                                      (arr(i,l,1) + arr(i,l,kend-1)) * rhz2 + j(i,l,kend)) * rc2;
+                    maxdiff = std::max(std::abs(arr(i,l,kend) - s), maxdiff);
+                    arr(i,l,kend) = s;
+                    arr(i,l,0) = s;
+                }
             }
         }
         comp_time += tm.time();
         return maxdiff;
     };
 
-    auto computeIterationStep = [im, lm, km, c12, c13, c21, c23, &computeStep, &computeStepZ, &computeBoundaryX, &computeBoundaryY,
+    auto computeIterationStep = [im, lm, km, c12, c13, c21, c23, &computeStep, &computeBoundaryX, &computeBoundaryY,
                                  &sendShadowsPrevAsync, sendShadowsNextAsync]
         (DDArray3 &ax, DDArray3 &ay, DDArray3 &az, const DDArray3 &jx, const DDArray3 &jy, const DDArray3 &jz)
         -> Double3 {
-        //sendShadowsNextAsync(ax);
-        //sendShadowsNextAsync(ay);
-        //sendShadowsNextAsync(az);
-
         const auto sx = computeStep(ax, jx, im, lm + 1, km + 1); // Ax(1..im-1,1..lm,1..km) <- Ax(0..im,0..lm+1,0..km+1)
 
         computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13); // x: Ax(0) <- Ay(1), Az(1) (local)
@@ -545,7 +519,7 @@ int main(int argc, char **argv) {
         sendShadowsNextAsync(ay);
         sendShadowsPrevAsync(ay);
 
-        const auto sz = computeStepZ(az, jz, im + 1, lm + 1, km); // Az(1..im,1..lm,0..km) <- Az(0..im+1,0..lm+1,0..km)
+        const auto sz = computeStep(az, jz, im + 1, lm + 1, km, true); // Az(1..im,1..lm,0..km) <- Az(0..im+1,0..lm+1,0..km)
 
         copySliceZ(az, 0, km, im + 2, lm + 2); // z: Az(0) <- Az(km) (remote)
         copySliceZ(az, km+1, 1, im + 2, lm + 2); // z: Az(km+1) <- Az(1) (remote)
