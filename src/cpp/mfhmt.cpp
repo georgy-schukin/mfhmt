@@ -9,6 +9,7 @@
 #include <tuple>
 
 using namespace std;
+using Double3 = std::array<double, 3>;
 
 void copySliceX(DArray3 &arr, int dst, int src, int lend, int kend) {
     for (int l = 0; l < lend; l++) {
@@ -446,38 +447,6 @@ int main(int argc, char **argv) {
     };
 
 /*
-      sx=0.d0
-      do k=2,km+1
-         do l=2,lm+1
-            do i=2,im
-               s=((ax(i+1,l,k)+ax(i-1,l,k))/hx**2+
-     =            (ax(i,l+1,k)+ax(i,l-1,k))/hy**2+
-     =            (ax(i,l,k+1)+ax(i,l,k-1))/hz**2+jx(i,l,k))/c2
-               s2=dabs(ax(i,l,k)-s)
-               if(s2.gt.sx) sx=s2
-               ax(i,l,k)=s
-            enddo
-         enddo
-      enddo
-*/
-
-    auto computeStep = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
-        double maxdiff = 0.0;
-        for (int i = 1; i < iend; i++) {
-            for (int l = 1; l < lend; l++) {
-                for (int k = 1; k < kend; k++) {
-                    const double s = ((arr(i+1,l,k) + arr(i-1,l,k)) * rhx2 +
-                                      (arr(i,l+1,k) + arr(i,l-1,k)) * rhy2 +
-                                      (arr(i,l,k+1) + arr(i,l,k-1)) * rhz2 + j(i,l,k)) * rc2;
-                    maxdiff = std::max(std::abs(arr(i,l,k) - s), maxdiff);
-                    arr(i,l,k) = s;
-                }
-            }
-        }
-        return maxdiff;
-    };
-
-/*
       sz=0.d0
       do l=2,lm+1
          do i=2,im+1
@@ -500,7 +469,7 @@ int main(int argc, char **argv) {
       enddo
 */
 
-    auto computeStepZ = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend) -> double {
+    auto computeStep = [rhx2, rhy2, rhz2, rc2](DArray3 &arr, const DArray3 &j, int iend, int lend, int kend, bool compute_kend = false) -> double {
         double maxdiff = 0.0;
         for (int i = 1; i < iend; i++) {
             for (int l = 1; l < lend; l++) {
@@ -511,15 +480,59 @@ int main(int argc, char **argv) {
                     maxdiff = std::max(std::abs(arr(i,l,k) - s), maxdiff);
                     arr(i,l,k) = s;
                 }
-                const double s = ((arr(i+1,l,kend) + arr(i-1,l,kend)) * rhx2 +
-                                  (arr(i,l+1,kend) + arr(i,l-1,kend)) * rhy2 +
-                                  (arr(i,l,1) + arr(i,l,kend-1)) * rhz2 + j(i,l,kend)) * rc2;
-                maxdiff = std::max(std::abs(arr(i,l,kend) - s), maxdiff);
-                arr(i,l,kend) = s;
-                arr(i,l,0) = s;
+                if (compute_kend) {
+                    const double s = ((arr(i+1,l,kend) + arr(i-1,l,kend)) * rhx2 +
+                                      (arr(i,l+1,kend) + arr(i,l-1,kend)) * rhy2 +
+                                      (arr(i,l,1) + arr(i,l,kend-1)) * rhz2 + j(i,l,kend)) * rc2;
+                    maxdiff = std::max(std::abs(arr(i,l,kend) - s), maxdiff);
+                    arr(i,l,kend) = s;
+                    arr(i,l,0) = s;
+                }
             }
         }
         return maxdiff;
+    };
+
+    auto computeA = [im, lm, km, c12, c13, c21, c23, eps, screen_output,
+                     &computeStep, &computeBoundaryX, &computeBoundaryY]
+        (DArray3 &ax, DArray3 &ay, DArray3 &az, const DArray3 &jx, const DArray3 &jy, const DArray3 &jz) -> std::pair<int, Double3> {
+        int iter = 0;
+        double sx, sy, sz;
+        do {
+            iter++;
+
+            sx = computeStep(ax, jx, im, lm + 1, km + 1);
+
+            computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13);
+            computeBoundaryX(ax, ay, az, im, im - 1, im, -c12, -c13);
+
+            copySliceZ(ax, 0, km, im + 1, lm + 2);
+            copySliceZ(ax, km + 1, 1, im + 1, lm + 2);
+
+            copySliceY(ax, 0, 1, im + 1, km + 2);
+            copySliceY(ax, lm + 1, lm, im + 1, km + 2);
+
+            sy = computeStep(ay, jy, im + 1, lm, km + 1);
+
+            computeBoundaryY(ax, ay, az, 0, 1, 1, c21, c23);
+            computeBoundaryY(ax, ay, az, lm, lm - 1, lm, -c21, -c23);
+
+            copySliceZ(ay, 0, km, im + 1, lm + 1);
+            copySliceZ(ay, km + 1, 1, im + 1, lm + 1);
+
+            copySliceX(ay, 0, 1, lm + 1, km + 2);
+            copySliceX(ay, im + 1, im, lm + 1, km + 2);
+
+            sz = computeStep(az, jz, im + 1, lm + 1, km, true);
+
+            copySliceZ(az, 0, km, im + 2, lm + 2);
+            copySliceZ(az, km+1, 1, im + 2, lm + 2);
+
+            if (screen_output) {
+                std::cout << iter << " " << sx << " " << sy << " " << sz << std::endl;
+            }
+        } while (sx > eps || sy > eps || sz > eps);
+        return std::make_pair(iter, Double3 {sx, sy, sz});
     };
 
 /*
@@ -655,45 +668,11 @@ int main(int argc, char **argv) {
     updateCurrent(jx, jy, jz);
 
     int iter = 0;
-    double sx = 0.0, sy = 0.0, sz = 0.0;
-
-    do {
-        iter++;
-
-        sx = computeStep(ax, jx, im, lm + 1, km + 1);
-
-        computeBoundaryX(ax, ay, az, 0, 1, 1, c12, c13);
-        computeBoundaryX(ax, ay, az, im, im - 1, im, -c12, -c13);
-
-        copySliceZ(ax, 0, km, im + 1, lm + 2);
-        copySliceZ(ax, km + 1, 1, im + 1, lm + 2);
-
-        copySliceY(ax, 0, 1, im + 1, km + 2);
-        copySliceY(ax, lm + 1, lm, im + 1, km + 2);
-
-        sy = computeStep(ay, jy, im + 1, lm, km + 1);
-
-        computeBoundaryY(ax, ay, az, 0, 1, 1, c21, c23);
-        computeBoundaryY(ax, ay, az, lm, lm - 1, lm, -c21, -c23);
-
-        copySliceZ(ay, 0, km, im + 1, lm + 1);
-        copySliceZ(ay, km + 1, 1, im + 1, lm + 1);
-
-        copySliceX(ay, 0, 1, lm + 1, km + 2);
-        copySliceX(ay, im + 1, im, lm + 1, km + 2);
-
-        sz = computeStepZ(az, jz, im + 1, lm + 1, km);
-
-        copySliceZ(az, 0, km, im + 2, lm + 2);
-        copySliceZ(az, km+1, 1, im + 2, lm + 2);
-
-        if (screen_output) {
-            std::cout << iter << " " << sx << " " << sy << " " << sz << std::endl;
-        }
-    } while (sx > eps || sy > eps || sz > eps);
+    Double3 diff;
+    std::tie(iter, diff) = computeA(ax, ay, az, jx, jy, jz);
 
     if (file_output) {
-        out_lst << "n,sx,sy,sz=" << formatI(iter) << formatS(sx) << formatS(sy) << formatS(sz) << std::endl;
+        out_lst << "n,sx,sy,sz=" << formatI(iter) << formatS(diff[0]) << formatS(diff[1]) << formatS(diff[2]) << std::endl;
     }
 
     computeB(0, az, ay, bx, rhy, rhz);
