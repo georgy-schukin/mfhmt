@@ -96,6 +96,7 @@ int main(int argc, char **argv) {
     const int NM_DEF = 1000;
     const int FOUT_DEF = 1;
     const int SOUT_DEF = 0;
+    const int MAX_ITERS_DEF = 0;
 
     int rank, size;
 
@@ -113,6 +114,7 @@ int main(int argc, char **argv) {
                 " [nm=" << NM_DEF << "]" <<
                 " [file_output=" << FOUT_DEF << "]" <<
                 " [screen_output=" << SOUT_DEF << "]" <<
+                " [max_iters=" << MAX_ITERS_DEF << "]" <<
                 std::endl;
             MPI_Finalize();
             return 0;
@@ -125,6 +127,7 @@ int main(int argc, char **argv) {
     const int nm = (argc > 4) ? stoi(argv[4]) : NM_DEF;
     const bool file_output = (argc > 5) ? stoi(argv[5]) : FOUT_DEF;
     const bool screen_output = (argc > 6) ? stoi(argv[6]) : SOUT_DEF;
+    const int max_iters = (argc > 7) ? stoi(argv[7]) : MAX_ITERS_DEF;
 
     // Can't distribute by Z because of data dependencies, so make 2D lattice only.
     CartTopology<3> cart_tp(rank, size, {0, 0, 1});
@@ -552,7 +555,7 @@ int main(int argc, char **argv) {
         sendShadowsPrevAsync(az);
     };
 
-    auto computeA = [screen_output, eps, &cart_tp, &computeIterationStep, &computeIterationStepEmpty,
+    auto computeA = [screen_output, eps, max_iters, &cart_tp, &computeIterationStep, &computeIterationStepEmpty,
                      &sendShadowsNextAsync, &finishShadowSends, &recvShadowsNext, &reduceMax]
         (DDArray3 &ax, DDArray3 &ay, DDArray3 &az, const DDArray3 &jx, const DDArray3 &jy, const DDArray3 &jz) -> std::pair<int, Double3> {
         const auto max_iter_depth = cart_tp.dim(0) + cart_tp.dim(1) + cart_tp.dim(2) - 2;
@@ -583,8 +586,12 @@ int main(int argc, char **argv) {
                 iter++;
                 const size_t reduce_pos = (iter - 1) % buf_size;
                 max_diff = reduceMax(diff_buf[reduce_pos]);
-                do_iter = (max_diff[0] > eps || max_diff[1] > eps || max_diff[2] > eps);
-
+                const auto not_converged = (max_diff[0] > eps || max_diff[1] > eps || max_diff[2] > eps);
+                if (max_iters > 0) {
+                    do_iter = (iter < max_iters) && not_converged;
+                } else {
+                    do_iter = not_converged;
+                }
                 if (screen_output && my_rank == 0) {
                     std::cout << iter << " " << max_diff[0] << " " << max_diff[1] << " " << max_diff[2] << std::endl;
                 }
