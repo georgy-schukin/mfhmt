@@ -4,6 +4,7 @@
 #include "cart_topology.h"
 #include "../common/output.h"
 #include "../common/timer.h"
+#include "trace_event.h"
 
 #include <mpi.h>
 
@@ -157,6 +158,8 @@ int main(int argc, char **argv) {
     double comp_time = 0;
     double shadow_time = 0;
     double reduce_time = 0;
+
+    TraceEvent step_event("Compute step");
 
     enum ShadowSyncType {
         SHADOW_ALL = 0,
@@ -453,11 +456,12 @@ int main(int argc, char **argv) {
         comp_time += tm.time();
     };
 
-    auto computeStep = [rhx2, rhy2, rhz2, rc2, &recvShadowsPrev, &recvShadowsNext, &comp_time]
+    auto computeStep = [rhx2, rhy2, rhz2, rc2, &recvShadowsPrev, &recvShadowsNext, &comp_time, &step_event]
         (DDArray3 &arr, const DDArray3 &j, int iend, int lend, int kend, bool compute_kend = false) -> double {
         recvShadowsNext(arr);
         recvShadowsPrev(arr);
         arr.finishAllOps();
+        TraceEventWrapper w(step_event);
         double maxdiff = 0.0;
         const auto i_start_l = arr.range(0).localStart(1);
         const auto i_end_l = arr.range(0).localEnd(iend);

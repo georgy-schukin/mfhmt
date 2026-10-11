@@ -29,4 +29,5 @@ HEADERS += \
     comm_util.h \
     defs.h \
     distributed_array3d.h \
-    shadowed_array3d.h
+    shadowed_array3d.h \
+    trace_event.h
