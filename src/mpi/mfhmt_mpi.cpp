@@ -234,6 +234,25 @@ int main(int argc, char **argv) {
         }
     };
 
+    auto startNextReduction = [&reduce_time](Reducer &reducer, const Double3 &value) {
+        Timer tm;
+        reducer.startNextReduction(value);
+        reduce_time += tm.time();
+    };
+
+    auto finishTopReduction = [&reduce_time](Reducer &reducer) -> Double3 {
+        Timer tm;
+        const auto result = reducer.finishTopReduction();
+        reduce_time += tm.time();
+        return result;
+    };
+
+    auto finishAllReductions = [&reduce_time](Reducer &reducer) {
+        Timer tm;
+        reducer.waitAll();
+        reduce_time += tm.time();
+    };
+
     auto reduceMaxInd = [rank, &reduce_time](double value, const Index3 &ind) -> std::pair<double, Index3> {
         struct {
             double value;
@@ -547,8 +566,9 @@ int main(int argc, char **argv) {
         sendShadowsPrevAsync(az);
     };
 
-    auto computeA = [screen_output, eps, max_iters, &cart_tp, &reduce_time, &computeIterationStep, &computeIterationStepEmpty,
-                     &sendShadowsNextAsync, &finishShadowSends, &recvShadowsNext]
+    auto computeA = [screen_output, eps, max_iters, &cart_tp, &computeIterationStep, &computeIterationStepEmpty,
+                    &sendShadowsNextAsync, &finishShadowSends, &recvShadowsNext,
+                    &startNextReduction, &finishTopReduction, &finishAllReductions]
         (DDArray3 &ax, DDArray3 &ay, DDArray3 &az, const DDArray3 &jx, const DDArray3 &jy, const DDArray3 &jz) -> std::pair<int, Double3> {
         const auto max_iter_depth = cart_tp.dim(0) + cart_tp.dim(1) + cart_tp.dim(2) - 2;
         const auto my_coord = cart_tp.thisCoord();
@@ -565,21 +585,16 @@ int main(int argc, char **argv) {
         sendShadowsNextAsync(az);
 
         Reducer reducer;
-        Timer tm;
 
         do {
             done_iter++;
 
             const auto diff = computeIterationStep(ax, ay, az, jx, jy, jz);
-            tm.reset();
-            reducer.startNextReduction(diff);
-            reduce_time += tm.time();
+            startNextReduction(reducer, diff);
 
             if (done_iter >= my_iter_depth) {
                 iter++;
-                tm.reset();
-                max_diff = reducer.finishTopReduction();
-                reduce_time += tm.time();
+                max_diff = finishTopReduction(reducer);
                 const auto not_converged = (max_diff[0] > eps || max_diff[1] > eps || max_diff[2] > eps);
                 if (max_iters > 0) {
                     do_iter = (iter < max_iters) && not_converged;
@@ -594,7 +609,7 @@ int main(int argc, char **argv) {
 
         while (extra_iters-- > 0) {
             computeIterationStepEmpty(ax, ay, az);
-            reducer.startNextReduction(Double3 {0, 0, 0});
+            startNextReduction(reducer, {});
         }
 
         recvShadowsNext(ax);
@@ -605,7 +620,7 @@ int main(int argc, char **argv) {
         finishShadowSends(ay);
         finishShadowSends(az);
 
-        reducer.waitAll();
+        finishAllReductions(reducer);
 
         return std::make_pair(iter, max_diff);
     };
