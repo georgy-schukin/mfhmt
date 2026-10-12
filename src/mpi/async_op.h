@@ -13,24 +13,13 @@ public:
         Request(MPI_Request req) :
             request(req) {
         }
-
         ~Request() {
             wait();
         }
 
-        void wait() {
-            if (!finished) {                                
-                MPI_Wait(&request, MPI_STATUS_IGNORE);                
-                finished = true;
-            }
-        }
-
-        void cancel() {
-            if (!finished) {
-                MPI_Cancel(&request);
-                finished = true;
-            }
-        }
+        void wait();
+        void cancel();
+        bool checkFinished();
     private:
         MPI_Request request;
         bool finished = false;
@@ -41,25 +30,19 @@ public:
     AsyncOp(MPI_Request req) {
         req_handle = std::make_shared<Request>(req);
     }
+    ~AsyncOp() {}
 
-    void wait() {
-        if (req_handle) {
-            req_handle->wait();
-            req_handle = nullptr;
-        }
-    }
-
-    void cancel() {
-        if (req_handle) {
-            req_handle->cancel();
-            req_handle = nullptr;
-        }
-    }
+    void wait();
+    void cancel();
+    bool checkFinished();
 private:
     std::shared_ptr<Request> req_handle;
 };
 
 class AsyncOps {
+public:
+    using iterator = std::vector<AsyncOp>::iterator;
+    using const_iterator = std::vector<AsyncOp>::const_iterator;
 public:
     AsyncOps() {}
 
@@ -77,7 +60,7 @@ public:
         add(AsyncOp(req));
     }
 
-    void wait() {        
+    void wait() {
         for (auto &op: _ops) {
             op.wait();
         }
@@ -93,6 +76,22 @@ public:
 
     size_t size() const {
         return _ops.size();
+    }
+
+    iterator begin() {
+        return _ops.begin();
+    }
+
+    iterator end() {
+        return _ops.end();
+    }
+
+    const_iterator begin() const {
+        return _ops.begin();
+    }
+
+    const_iterator end() const {
+        return _ops.end();
     }
 
 private:

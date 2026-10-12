@@ -5,10 +5,12 @@ project(MFHMT_MPI CXX)
 find_package(MPI REQUIRED COMPONENTS CXX)
 
 add_executable(mfhmt_mpi
+    async_op.cpp
     block_decomp.cpp
     distributed_array3d.cpp
     comm_util.cpp
     mfhmt_mpi.cpp
+    reducer.cpp
     ../common/output.cpp
 )
 

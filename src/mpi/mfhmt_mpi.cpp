@@ -5,6 +5,7 @@
 #include "../common/output.h"
 #include "../common/timer.h"
 #include "trace_event.h"
+#include "reducer.h"
 
 #include <mpi.h>
 
@@ -19,7 +20,6 @@
 using namespace std;
 
 using DDArray3 = DistributedArray3D;
-using Double3 = std::array<double, 3>;
 
 void copySliceX(DDArray3 &arr, int dst, int src, int lend, int kend) {
     if (!arr.range(0).hasIndex(dst)) {
@@ -232,14 +232,6 @@ int main(int argc, char **argv) {
         } else if (shift < 0) {
             syncShadows(arr, SHADOW_PREV, dim);
         }
-    };
-
-    auto reduceMax = [&reduce_time](const Double3 &value) -> Double3 {
-        Double3 global;
-        Timer tm;
-        MPI_Allreduce(value.data(), global.data(), 3, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-        reduce_time += tm.time();
-        return global;
     };
 
     auto reduceMaxInd = [rank, &reduce_time](double value, const Index3 &ind) -> std::pair<double, Index3> {
@@ -555,37 +547,39 @@ int main(int argc, char **argv) {
         sendShadowsPrevAsync(az);
     };
 
-    auto computeA = [screen_output, eps, max_iters, &cart_tp, &computeIterationStep, &computeIterationStepEmpty,
-                     &sendShadowsNextAsync, &finishShadowSends, &recvShadowsNext, &reduceMax]
+    auto computeA = [screen_output, eps, max_iters, &cart_tp, &reduce_time, &computeIterationStep, &computeIterationStepEmpty,
+                     &sendShadowsNextAsync, &finishShadowSends, &recvShadowsNext]
         (DDArray3 &ax, DDArray3 &ay, DDArray3 &az, const DDArray3 &jx, const DDArray3 &jy, const DDArray3 &jz) -> std::pair<int, Double3> {
         const auto max_iter_depth = cart_tp.dim(0) + cart_tp.dim(1) + cart_tp.dim(2) - 2;
         const auto my_coord = cart_tp.thisCoord();
         const auto my_rank = cart_tp.thisRank();
         const auto my_iter_depth = max_iter_depth - (my_coord[0] + my_coord[1] + my_coord[2]);
 
-        const size_t buf_size = my_iter_depth;
-        std::vector<Double3> diff_buf(buf_size);
-        size_t curr_buf_pos = 0;
-
         int iter = 0, done_iter = 0;
         bool do_iter = true;
         Double3 max_diff;
-        int finishing = max_iter_depth - my_iter_depth;
+        int extra_iters = max_iter_depth - my_iter_depth;
 
         sendShadowsNextAsync(ax);
         sendShadowsNextAsync(ay);
         sendShadowsNextAsync(az);
 
+        Reducer reducer;
+        Timer tm;
+
         do {
             done_iter++;
 
             const auto diff = computeIterationStep(ax, ay, az, jx, jy, jz);
-            diff_buf[curr_buf_pos] = diff;
+            tm.reset();
+            reducer.startNextReduction(diff);
+            reduce_time += tm.time();
 
             if (done_iter >= my_iter_depth) {
                 iter++;
-                const size_t reduce_pos = (iter - 1) % buf_size;
-                max_diff = reduceMax(diff_buf[reduce_pos]);
+                tm.reset();
+                max_diff = reducer.finishTopReduction();
+                reduce_time += tm.time();
                 const auto not_converged = (max_diff[0] > eps || max_diff[1] > eps || max_diff[2] > eps);
                 if (max_iters > 0) {
                     do_iter = (iter < max_iters) && not_converged;
@@ -596,12 +590,11 @@ int main(int argc, char **argv) {
                     std::cout << iter << " " << max_diff[0] << " " << max_diff[1] << " " << max_diff[2] << std::endl;
                 }
             }
-
-            curr_buf_pos = (curr_buf_pos + 1) % buf_size;
         } while (do_iter);
 
-        while (finishing-- > 0) {
+        while (extra_iters-- > 0) {
             computeIterationStepEmpty(ax, ay, az);
+            reducer.startNextReduction(Double3 {0, 0, 0});
         }
 
         recvShadowsNext(ax);
@@ -611,6 +604,8 @@ int main(int argc, char **argv) {
         finishShadowSends(ax);
         finishShadowSends(ay);
         finishShadowSends(az);
+
+        reducer.waitAll();
 
         return std::make_pair(iter, max_diff);
     };

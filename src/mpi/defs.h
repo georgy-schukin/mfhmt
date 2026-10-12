@@ -8,3 +8,4 @@
 using DArray3 = ShadowedArray3D<double>;
 using DArray1 = std::vector<double>;
 using Index3 = std::array<int, 3>;
+using Double3 = std::array<double, 3>;

@@ -15,10 +15,12 @@ exists(local.pri) {
 
 SOURCES +=   \
     ../common/output.cpp \
+    async_op.cpp \
     block_decomp.cpp \
     comm_util.cpp \
     distributed_array3d.cpp \
-    mfhmt_mpi.cpp
+    mfhmt_mpi.cpp \
+    reducer.cpp
 
 HEADERS += \
     ../common/output.h \
@@ -29,5 +31,6 @@ HEADERS += \
     comm_util.h \
     defs.h \
     distributed_array3d.h \
+    reducer.h \
     shadowed_array3d.h \
     trace_event.h
