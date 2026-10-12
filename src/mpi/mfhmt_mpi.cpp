@@ -161,6 +161,7 @@ int main(int argc, char **argv) {
     double comp_time = 0;
     double shadow_time = 0;
     double reduce_time = 0;
+    int actual_iters = 0;
 
     TraceEvent step_event("Compute step");
 
@@ -566,7 +567,8 @@ int main(int argc, char **argv) {
         sendShadowsPrevAsync(az);
     };
 
-    auto computeA = [screen_output, eps, max_iters, &cart_tp, &computeIterationStep, &computeIterationStepEmpty,
+    auto computeA = [screen_output, eps, max_iters, &cart_tp, &actual_iters,
+                    &computeIterationStep, &computeIterationStepEmpty,
                     &sendShadowsNextAsync, &finishShadowSends, &recvShadowsNext,
                     &startNextReduction, &finishTopReduction, &finishAllReductions]
         (DDArray3 &ax, DDArray3 &ay, DDArray3 &az, const DDArray3 &jx, const DDArray3 &jy, const DDArray3 &jz) -> std::pair<int, Double3> {
@@ -588,6 +590,7 @@ int main(int argc, char **argv) {
 
         do {
             done_iter++;
+            actual_iters++;
 
             const auto diff = computeIterationStep(ax, ay, az, jx, jy, jz);
             startNextReduction(reducer, diff);
@@ -794,7 +797,8 @@ int main(int argc, char **argv) {
     out << "Node " << rank <<
         ": Comp time: " << comp_time <<
         ", Shadow time: " << shadow_time <<
-        ", Reduce time: " << reduce_time << std::endl;
+        ", Reduce time: " << reduce_time <<
+        ", Actual iters: " << actual_iters << std::endl;
 
     std::cout << out.str();
 
